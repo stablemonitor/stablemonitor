@@ -50,7 +50,7 @@ jobs:
       - name: Assemble public files
         run: |
           mkdir -p _site
-          cp index.html crcl.html METHODOLOGY.md README.md _site/
+          cp index.html crcl.html METHODOLOGY.md VALIDATION.md README.md _site/
           cp -R assets data _site/
       - name: Upload public site
         uses: actions/upload-pages-artifact@v3

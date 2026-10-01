@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Stablecoin Dashboard</title>
+<title>StableMonitor · CRCL 研究与稳定币看板</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231a2332'/%3E%3Cpath d='M12 43 25 30l10 6 17-20' fill='none' stroke='%23c9a961' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
@@ -23,7 +24,7 @@ a{color:var(--gold);text-decoration:none}
 .header .meta{font-size:12px;color:var(--text2)}
 .header .meta span{margin-left:12px}
 .status{display:inline-flex;align-items:center;gap:4px}
-.status .dot{width:8px;height:8px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
+.status .dot{width:8px;height:8px;border-radius:50%;background:var(--yellow)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 
 .tabs{display:flex;background:var(--navy);border-bottom:1px solid var(--border);padding:0 24px;overflow-x:auto}
@@ -31,6 +32,33 @@ a{color:var(--gold);text-decoration:none}
 .tab:hover{color:var(--text)}
 .tab.active{color:var(--gold);border-bottom-color:var(--gold)}
 .tab.trade-link{color:var(--gold2);font-weight:700}
+button.tab{font-family:inherit;background:none;border:0;border-bottom:2px solid transparent;text-align:left}
+.tab:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid var(--gold);outline-offset:-3px}
+.header .meta{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px 14px}
+.header .meta span{margin-left:0}
+.header h1{overflow-wrap:anywhere}
+.current-summary{background:linear-gradient(135deg,var(--navy2),var(--card));border:1px solid var(--gold);border-radius:10px;padding:22px;margin-bottom:24px}
+.current-heading{display:flex;align-items:start;justify-content:space-between;gap:12px;margin-bottom:12px}
+.current-heading h2{font-size:19px;color:var(--gold2)}
+.current-label{font-size:12px;color:var(--text2);margin-bottom:4px}
+.current-status{font-size:12px;color:var(--text2);line-height:1.8}
+.current-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:16px 0}
+.current-metric{min-width:0;padding:13px;border:1px solid var(--border);border-radius:6px;background:var(--card)}
+.current-metric span{display:block;font-size:11px;color:var(--text2)}
+.current-metric strong{display:block;font-family:'SF Mono',Menlo,monospace;font-size:21px;color:var(--gold2);margin:4px 0;overflow-wrap:anywhere}
+.current-metric small{display:block;font-size:11px;color:var(--text2);line-height:1.6}
+.current-conclusion{padding:14px 16px;background:var(--bg);border-radius:6px;margin-bottom:12px}
+.current-conclusion strong{font-size:17px;color:var(--gold2)}
+.current-conclusion p,.current-footnote{font-size:12px;line-height:1.8;color:var(--text2);overflow-wrap:anywhere}
+.current-actions{display:flex;flex-wrap:wrap;gap:8px 20px;font-size:13px;margin:12px 0}
+.current-primary-link{background:var(--gold);color:var(--bg);font-weight:700;padding:10px 16px;border-radius:6px}
+.current-actions a:not(.current-primary-link){padding:10px 0;text-decoration:underline;text-underline-offset:4px}
+.archive-reading{padding:14px 16px;background:var(--card);border:1px solid var(--border);border-radius:8px;margin:24px 0}
+.archive-reading summary{cursor:pointer;color:var(--gold2);font-size:13px;font-weight:600;min-height:28px}
+.archive-reading[open] summary{margin-bottom:14px}
+.archive-note{background:var(--navy2);border-left:3px solid var(--yellow);padding:12px 16px;font-size:12px;line-height:1.8;color:var(--text2);margin-bottom:18px}
+.ranking-state{font-size:12px;line-height:1.8;color:var(--text2);margin-bottom:10px}
+.ranking-state.warn,.current-status.warn{color:var(--yellow)}
 .history-note{color:var(--text2);font-size:12px;line-height:1.8;margin-bottom:16px}
 .research-banner{background:var(--navy2);border:1px solid var(--gold);border-radius:8px;padding:16px 18px;margin-bottom:20px;font-size:13px;line-height:1.8}
 .research-banner a{display:inline-block;font-weight:700;text-decoration:underline;text-underline-offset:3px}
@@ -112,7 +140,15 @@ td.l{text-align:left}
   .predict-grid{grid-template-columns:1fr}
   .header{flex-direction:column;gap:8px}
   .content{padding:12px}
+  .current-summary{padding:16px}
+  .current-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .current-heading{flex-direction:column}
+  .header{padding:12px;text-align:center}
+  .header .meta{justify-content:center;font-size:11px}
+  .tabs{padding:0 8px}
+  .tab{padding:12px}
 }
+@media(max-width:360px){.current-metric{padding:10px}.current-metric strong{font-size:18px}.current-primary-link{width:100%;text-align:center}.kpi .value{font-size:18px}.header h1{font-size:16px}}
 </style>
 </head>
 <body>
@@ -120,43 +156,52 @@ td.l{text-align:left}
 <div class="header">
   <h1>STABLECOIN DASHBOARD</h1>
   <div class="meta">
-    <span class="status"><span class="dot"></span><span id="data-status">供应量更新 · 其余为历史快照</span></span>
-    <span id="update-time">Loading...</span>
+    <span id="current-mini-status">CRCL 同站快照尚未载入</span>
+    <span id="ranking-mini-status">稳定币榜单正在拉取</span>
   </div>
 </div>
 
-<div class="tabs">
+<nav class="tabs" aria-label="研究导航">
   <a class="tab trade-link" href="./crcl.html">CRCL 买卖点 ↗</a>
-  <div class="tab active" data-tab="overview">核心仪表盘</div>
-  <div class="tab" data-tab="rates">利率测算 · 2026-05 快照</div>
-  <div class="tab" data-tab="predict">Q1 预测 · 2026-05 快照</div>
-  <div class="tab" data-tab="compare">CRCL vs USDT · 历史</div>
-  <div class="tab" data-tab="timeline">事件表 · 2026-05 快照</div>
-  <div class="tab" data-tab="sources">数据源</div>
-</div>
+  <button type="button" class="tab active" data-tab="overview" aria-pressed="true" aria-controls="panel-overview">当前摘要</button>
+  <button type="button" class="tab" data-tab="rates" aria-pressed="false" aria-controls="panel-rates">归档：利率测算</button>
+  <button type="button" class="tab" data-tab="predict" aria-pressed="false" aria-controls="panel-predict">归档：Q1 预测</button>
+  <button type="button" class="tab" data-tab="compare" aria-pressed="false" aria-controls="panel-compare">归档：CRCL vs USDT</button>
+  <button type="button" class="tab" data-tab="timeline" aria-pressed="false" aria-controls="panel-timeline">归档：事件预期</button>
+  <button type="button" class="tab" data-tab="sources" aria-pressed="false" aria-controls="panel-sources">数据源</button>
+</nav>
 
 <div class="content">
 <div class="research-banner">
-  <strong>新增：CRCL 买卖点研究图表</strong><br>
-  查看股价、情景估值与条件信号，并检查每个判断的数据日期和触发条件。
-  <a href="./crcl.html">打开 CRCL 买卖点 →</a><br>
-  本页仅美元稳定币供应模块每次打开更新；利率、财报预测、公司比较及事件内容为 <strong>2026-05 历史快照</strong>，其中“即将”指当时预期，不能作为当前交易依据。
+  <strong>CRCL 当前研究与历史资料入口</strong><br>
+  当前摘要与买卖点研究台读取本网站同一份数据；稳定币榜单另行拉取。每项信息都标明日期与状态。<br>
+  归档标签保存 <strong>2026-05 旧研究快照</strong>；旧预测和事件预期未经结果更新，只供历史阅读。
 </div>
 
 <!-- ============ Tab 1: Overview ============ -->
 <div class="panel active" id="panel-overview">
+  <section class="current-summary" aria-labelledby="home-current-heading">
+    <div class="current-heading"><div><p class="current-label">同站数据 · 默认模型 · 未持仓视角</p><h2 id="home-current-heading">CRCL 当前研究摘要</h2></div><a href="./crcl.html">查看完整条件 →</a></div>
+    <p class="current-status" id="home-current-status" role="status">同站快照尚未载入；当前买卖判断不可用。</p>
+    <noscript><p class="archive-note">浏览器未启用 JavaScript，无法读取当前数据或计算条件。下方固定资料均为历史归档。可直接查看 <a href="./data/market-data.json">市场快照</a> 与 <a href="./data/financials.json">财报快照</a> 的日期。</p></noscript>
+    <div class="current-metrics" id="home-current-metrics"><article class="current-metric"><span>已完成收盘价</span><strong>需补</strong><small>等待同站行情快照</small></article><article class="current-metric"><span>USDC 名义供给</span><strong>需补</strong><small>等待滞后可见观测</small></article><article class="current-metric"><span>短端利率 / 财报</span><strong>需补</strong><small>等待 SOFR 与季度快照</small></article><article class="current-metric"><span>基准估值 / 条件</span><strong>需补</strong><small>等待默认模型核对</small></article></div>
+    <div class="current-conclusion"><strong id="home-current-decision">等待有效数据</strong><p id="home-current-reason">快照未载入前，不产生当前买卖建议。</p></div>
+    <div class="current-actions"><a class="current-primary-link" href="./crcl.html">进入买卖点研究台 →</a><a href="./crcl.html#decision-surface">检查条件与情景估值</a><a href="./METHODOLOGY.md">方法与数据规则</a></div>
+    <p class="current-footnote" id="home-current-proof">摘要采用研究台默认参数，不读取你的账户或浏览器内自定义参数。价格与条件线不是自动成交指令。</p>
+  </section>
+  <div class="section-title">即时稳定币榜单 · 独立数据状态</div>
+  <p class="ranking-state" id="data-status" role="status">榜单尚未载入；将优先展示可读取的同站供给快照。</p>
+  <p class="ranking-state" id="ranking-update-time"></p>
   <div class="kpi-row" id="kpi-row">
-    <div class="kpi"><div class="label">美元稳定币总发行量</div><div class="value" id="kpi-total">--</div><div class="sub" id="kpi-total-sub"></div></div>
-    <div class="kpi"><div class="label">USDT 占美元稳定币总量</div><div class="value" id="kpi-usdt-share">--</div></div>
-    <div class="kpi"><div class="label">USDC 占美元稳定币总量</div><div class="value" id="kpi-usdc-share">--</div></div>
-    <div class="kpi"><div class="label">HHI 集中度</div><div class="value" id="kpi-hhi">--</div><div class="sub">全部美元稳定币，0–10,000</div></div>
-    <div class="kpi"><div class="label">Fed Funds · 历史快照</div><div class="value">3.50-3.75%</div><div class="sub">2026-05 快照，未自动更新</div></div>
-    <div class="kpi"><div class="label">3M T-Bill · 历史快照</div><div class="value">3.70%</div><div class="sub">2026-05-04，未自动更新</div></div>
+    <div class="kpi"><div class="label" id="kpi-total-label">美元稳定币名义总发行量</div><div class="value" id="kpi-total">需补</div><div class="sub" id="kpi-total-sub"></div></div>
+    <div class="kpi"><div class="label">USDT 占美元稳定币总量</div><div class="value" id="kpi-usdt-share">需补</div></div>
+    <div class="kpi"><div class="label">USDC 占美元稳定币总量</div><div class="value" id="kpi-usdc-share">需补</div></div>
+    <div class="kpi"><div class="label">HHI 集中度</div><div class="value" id="kpi-hhi">需补</div><div class="sub">全部美元稳定币，0–10,000</div></div>
   </div>
 
   <div class="section">
     <div class="section-title">美元稳定币发行量排名 Top 10 ($1B+)</div>
-    <p class="history-note">总量、份额与 HHI 使用 API 中全部有正发行量的美元稳定币；榜单仅显示其中发行量 ≥ $1B 的前 10 名。缺失数据标为“需补”。</p>
+    <p class="history-note">即时榜单总量、份额与 HHI 按 API 全部有正名义发行量的美元稳定币计算；仅展示 ≥ $1B 的前 10 名。与上方同站美元市值口径有差别。若外部榜单失败，保留同站 USDC 与美元总量快照，其余指标标为“需补”。</p>
     <div class="table-wrap">
       <table>
         <thead><tr>
@@ -170,6 +215,9 @@ td.l{text-align:left}
 
   <div class="insight" id="insight-box">加载数据后自动生成趋势分析...</div>
 
+  <details class="archive-reading">
+    <summary>历史阅读：USDC 季度趋势与旧利率 · 2026-05 归档</summary>
+    <div class="kpi-row"><div class="kpi"><div class="label">Fed Funds · 历史快照</div><div class="value">3.50-3.75%</div><div class="sub">2026-05 快照，未自动更新</div></div><div class="kpi"><div class="label">3M T-Bill · 历史快照</div><div class="value">3.70%</div><div class="sub">2026-05-04，未自动更新</div></div></div>
   <div class="section">
     <div class="section-title">USDC 季度趋势 · 2026-05 历史快照</div>
     <p class="history-note">下表沿用旧研究数据，未自动更新。2026-03-16 的 $79.2B 是季中披露快照，不代表 Q1 期末实际发行量。</p>
@@ -186,11 +234,12 @@ td.l{text-align:left}
       </table>
     </div>
   </div>
+  </details>
 </div>
 
 <!-- ============ Tab 2: Rates ============ -->
 <div class="panel" id="panel-rates">
-  <p class="history-note"><strong>2026-05 历史快照：</strong>本标签的利率、会议概率、收入参数与情景均未自动更新，不用于当前买卖点计算。</p>
+  <p class="archive-note"><strong>归档阅读 · 2026-05：</strong>下文保留当时的利率、会议概率、收入参数与判断，尚未逐项核对后续结果。这里的“当前”“全年”均指归档当时；不参与现行模型。<a href="./crcl.html">查看当前研究 →</a></p>
   <div class="section">
     <div class="section-title">美国国债收益率曲线 (5/4/2026)</div>
     <div id="yield-curve" style="padding:8px 0"></div>
@@ -261,9 +310,9 @@ td.l{text-align:left}
 
 <!-- ============ Tab 3: Q1 Prediction ============ -->
 <div class="panel" id="panel-predict">
-  <p class="history-note"><strong>2026-05 历史快照：</strong>保留当时的 Q1 财报预测，未以之后发布的财报校准。季中供应快照不能直接替代季度平均或期末实际发行量。</p>
+  <p class="archive-note"><strong>归档阅读 · 2026-05：</strong>保留当时的 Q1 财报预测，未以之后发布的财报校准；发布日期是当时的预期。季中供应快照不能替代季度平均或期末实际值。<a href="./crcl.html">查看当前已公开财报与研究 →</a></p>
   <div class="section">
-    <div class="section-title">Circle Q1'26 财报 AI 预测 (5/11盘后发布)</div>
+    <div class="section-title">历史预测：Circle Q1'26 财报（当时预计 2026-05-11 发布）</div>
     <div class="insight" style="border-left-color:var(--green)">
       <strong>方法论:</strong> 基于链上可观测数据(USDC发行量、铸造/赎回、链上交易量) + 利率环境(Q1平均3M T-Bill) + 公司guidance + 历史季节性，构建底层收入模型。<br>
       <strong>历史输入:</strong> Circle 3/16季中披露USDC $79.2B | Q1平均USDC旧估算 ~$77B（需以每日数据重算）| Q4'25平均 ~$76.2B | 3M T-Bill Q1均值 ~3.65%
@@ -364,7 +413,7 @@ td.l{text-align:left}
 
 <!-- ============ Tab 4: Compare ============ -->
 <div class="panel" id="panel-compare">
-  <p class="history-note"><strong>2026-05 历史快照：</strong>发行量、股价、估值、商业与监管判断保留当时版本，未自动刷新或逐条重新验证。</p>
+  <p class="archive-note"><strong>归档阅读 · 2026-05：</strong>发行量、股价、估值、商业与监管判断保留旧版本，未逐条重新验证。旧结论不能替代当前估值或事实核查。<a href="./crcl.html">查看当前研究 →</a></p>
   <div class="section">
     <div class="section-title">Circle (CRCL) vs Tether (USDT) -- 15维度对比</div>
     <div id="compare-table"></div>
@@ -379,15 +428,16 @@ td.l{text-align:left}
 
 <!-- ============ Tab 5: Timeline ============ -->
 <div class="panel" id="panel-timeline">
-  <p class="history-note"><strong>2026-05 历史快照：</strong>“即将”与未来窗口代表当时的预期，不代表当前日历、最新进展或已确认结果。</p>
+  <p class="archive-note"><strong>归档阅读 · 2026-05：</strong>事件表保存当时陈述与预期，尚未核对后续结果；既不是当前日历，也不证明预期已经发生。<a href="./crcl.html">查看当前研究 →</a></p>
   <div class="section">
-    <div class="section-title">行业重大事件时间表</div>
+    <div class="section-title">旧研究事件表 · 截至 2026-05 的陈述与预期</div>
     <div id="timeline-list"></div>
   </div>
 </div>
 
 <!-- ============ Tab 6: Sources ============ -->
 <div class="panel" id="panel-sources">
+  <p class="archive-note">当前摘要读取 <a href="./data/market-data.json">本网站行情缓存</a> 与 <a href="./data/financials.json">核录财报</a>；缓存采集任务更新日线、USDC 和 SOFR，财报需逐季核录。下表是旧研究来源目录，所列频率表示来源本身频率，不代表本页面已接入或自动更新。</p>
   <div class="section">
     <div class="section-title">数据源 (全部免费/公开)</div>
     <div class="table-wrap">
@@ -397,7 +447,7 @@ td.l{text-align:left}
           <tr><td>稳定币发行量</td><td>DefiLlama</td><td><a href="https://stablecoins.llama.fi/stablecoins?includePrices=true" target="_blank">stablecoins API</a></td><td class="c">实时</td><td>本页面实时拉取</td></tr>
           <tr><td>国债收益率</td><td>Fed H.15</td><td><a href="https://www.federalreserve.gov/releases/h15/" target="_blank">H.15 Release</a></td><td class="c">每日</td><td>1M~30Y完整曲线</td></tr>
           <tr><td>FRED利率</td><td>FRED</td><td><a href="https://fred.stlouisfed.org/series/DGS3MO" target="_blank">DGS3MO</a></td><td class="c">每日</td><td>3M/6M/1Y T-Bill</td></tr>
-          <tr><td>CRCL股价</td><td>Yahoo Finance</td><td>finance.yahoo.com/quote/CRCL</td><td class="c">实时</td><td>盘中+盘后</td></tr>
+          <tr><td>CRCL股价</td><td>Yahoo Finance</td><td>finance.yahoo.com/quote/CRCL</td><td class="c">日线缓存</td><td>当前摘要仅使用已完成收盘价，非盘中报价</td></tr>
           <tr><td>分析师共识</td><td>TipRanks</td><td>tipranks.com/stocks/crcl</td><td class="c">每日</td><td>目标价+评级</td></tr>
           <tr><td>内部人交易</td><td>SEC EDGAR</td><td>Form 144/Form 4</td><td class="c">事件</td><td>减持记录</td></tr>
           <tr><td>利率预期</td><td>CME FedWatch</td><td><a href="https://www.cmegroup.com/markets/interest-rates/cme-fedwatch-tool.html" target="_blank">FedWatch</a></td><td class="c">实时</td><td>FOMC概率</td></tr>
@@ -411,7 +461,7 @@ td.l{text-align:left}
     </div>
     <div class="insight">
       本页面仅美元稳定币供应模块直接调用 DefiLlama 公开 API，每次打开重新拉取；拉取时间不等于源数据观察时间。<br>
-      表中频率描述源数据的发布频率，不代表本页全部实现了自动采集。利率、财报预测、股价、比较与事件内容均为 2026-05 历史快照；当前 CRCL 条件信号请查看 <a href="./crcl.html">买卖点研究页</a>。
+      表中频率描述源数据的发布频率，不代表已接入本页。归档标签中的利率曲线、预测、股价、比较与事件保留 2026-05 旧版本；当前摘要与 <a href="./crcl.html">买卖点研究页</a> 使用有日期的同站行情和核录财报。
     </div>
   </div>
 </div>
@@ -425,9 +475,10 @@ td.l{text-align:left}
 <script>
 document.querySelectorAll('.tab[data-tab]').forEach(tab => {
   tab.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab[data-tab]').forEach(t => { t.classList.remove('active'); t.setAttribute('aria-pressed', 'false'); });
     document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
     tab.classList.add('active');
+    tab.setAttribute('aria-pressed', 'true');
     document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
   });
 });
@@ -473,8 +524,11 @@ function escapeHtml(value) {
 }
 
 async function loadData() {
+  window.stableRankingState = {state:'loading'};
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
   try {
-    const res = await fetch('https://stablecoins.llama.fi/stablecoins?includePrices=true');
+    const res = await fetch('https://stablecoins.llama.fi/stablecoins?includePrices=true', {signal:controller.signal});
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     if (!Array.isArray(data.peggedAssets)) throw new Error('供应数据结构不完整');
@@ -506,7 +560,12 @@ async function loadData() {
     document.getElementById('kpi-usdc-share').textContent = usdc ? pct(usdc.supply, total) : '需补';
     const hhi = universe.reduce((sum, r) => sum + Math.pow(r.supply / total * 100, 2), 0);
     document.getElementById('kpi-hhi').textContent = Math.round(hhi);
-    document.getElementById('update-time').textContent = '供应量拉取：' + new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
+    document.getElementById('kpi-total-label').textContent = '美元稳定币名义总发行量';
+    document.getElementById('data-status').textContent = '即时榜单已载入 · 数据来自外部聚合 API；不改变同站 CRCL 模型输入';
+    document.getElementById('data-status').classList.remove('warn');
+    document.getElementById('ranking-mini-status').textContent = '稳定币榜单已载入';
+    document.getElementById('ranking-update-time').textContent = '榜单请求时间（北京时间）：' + new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) + '；API 未给统一观测日期，请求时间不等于数据日期';
+    window.stableRankingState = {state:'ready'};
 
     const tbody = document.getElementById('stable-table');
     tbody.innerHTML = rows.map((r, i) => `
@@ -536,12 +595,18 @@ async function loadData() {
       '增幅 =（当前发行量 − 30 日前发行量）÷ 30 日前发行量；供应变化本身不代表支付收入或股价方向。';
 
   } catch (err) {
+    const message = err.name === 'AbortError' ? '外部榜单请求超时' : err.message;
+    window.stableRankingState = {state:'error',message};
     document.getElementById('stable-table').innerHTML =
-      `<tr><td colspan="9" style="color:var(--red);padding:20px">供应量需补：${escapeHtml(err.message)}</td></tr>`;
-    document.getElementById('insight-box').textContent = '供应数据加载失败，当前供应量与趋势需补。';
-    document.getElementById('data-status').textContent = '供应量加载失败 · 其余为历史快照';
-    document.querySelector('.status .dot').style.background = 'var(--red)';
-    document.getElementById('update-time').textContent = '供应量拉取失败';
+      `<tr><td colspan="9" style="color:var(--yellow);padding:20px">即时榜单需补：${escapeHtml(message)}。正在检查同站供给缓存。</td></tr>`;
+    document.getElementById('insight-box').textContent = '即时榜单失败；榜单趋势与 HHI 需补。同站 CRCL 摘要独立载入。';
+    document.getElementById('data-status').textContent = '即时榜单失败 · 当前 CRCL 摘要状态见上方';
+    document.getElementById('data-status').classList.add('warn');
+    document.getElementById('ranking-mini-status').textContent = '即时榜单失败 · 检查同站缓存';
+    document.getElementById('ranking-update-time').textContent = message;
+    window.dispatchEvent(new CustomEvent('stable-ranking-error', {detail:window.stableRankingState}));
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -612,11 +677,11 @@ function renderTimeline() {
     ['2026-05-01', 'Circle在Solana铸造$750M USDC', '链上', '★★', 'yellow'],
     ['2026-05-02', 'CLARITY Act妥协案发布', '监管', '★★★', 'red'],
     ['2026-05-04', 'CRCL暴涨+18%至$121.14', '股价', '★★★', 'red'],
-    ['2026-05-11', '[即将] Circle Q1财报 + Senate markup', '财报', '★★★', 'red'],
-    ['2026-05-15', '[即将] Powell卸任Fed主席', '宏观', '★', 'blue'],
-    ['2026-06-17', '[即将] 6月FOMC', '宏观', '★★', 'yellow'],
-    ['2026-08', '[即将] Coinbase合约续期窗口', '业务', '★★★', 'red'],
-    ['2026-H2', '[即将] CLARITY Act众议院投票', '监管', '★★★', 'red'],
+    ['2026-05-11', '[当时预期，未核对结果] Circle Q1财报 + Senate markup', '财报', '★★★', 'red'],
+    ['2026-05-15', '[当时预期，未核对结果] Powell卸任Fed主席', '宏观', '★', 'blue'],
+    ['2026-06-17', '[当时预期，未核对结果] 6月FOMC', '宏观', '★★', 'yellow'],
+    ['2026-08', '[当时预期，未核对结果] Coinbase合约续期窗口', '业务', '★★★', 'red'],
+    ['2026-H2', '[当时预期，未核对结果] CLARITY Act众议院投票', '监管', '★★★', 'red'],
   ];
   document.getElementById('timeline-list').innerHTML = events.map(([date, event, cat, level, color]) => `
     <div class="timeline-item">
@@ -633,5 +698,6 @@ renderYieldCurve();
 renderCompare();
 renderTimeline();
 </script>
+<script type="module" src="./assets/home-current.js"></script>
 </body>
 </html>

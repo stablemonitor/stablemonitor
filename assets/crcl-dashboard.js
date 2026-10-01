@@ -1,4 +1,5 @@
 import * as Model from './crcl-model.js';
+import {renderResearch,buildPortfolioForm,readPortfolioForm,fillPortfolioForm} from './crcl-usable.js';
 
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
@@ -18,6 +19,18 @@ const displayDate = value => {
 const defaultSettings = structuredClone(Model.DEFAULT_SETTINGS);
 let settings = structuredClone(defaultSettings);
 let data, analysis, visibleHistory = [], range = '180', selectedIndex = -1;
+let researchState={positionView:'flat',portfolio:null,demo:false};
+const scenarioLimits={usdcGrowth:[-.9,1.5],yieldShift:[-.04,.03],retentionShift:[-.25,.25],otherGrowth:[-.5,1.5],opexGrowth:[-.3,.7],dilution:[0,.25],multiple:[5,60]};
+function linkScenarioField(key,baseValue) {
+  const shift=baseValue-settings.scenarios.base[key],limits=scenarioLimits[key],clipped=[];
+  for (const name of ['bear','base','bull']) {
+    const value=settings.scenarios[name][key]+shift;
+    const bounded=Math.max(limits[0],Math.min(limits[1],value));
+    if (bounded!==value) clipped.push(name);
+    settings.scenarios[name][key]=bounded;
+  }
+  if (clipped.length) $('settings-feedback').textContent=`${clipped.join(' / ')} 的 ${fields.find(f=>f.key===key)?.label || '联动参数'} 已按经济边界约束；请在完整计算表查看实际假设。`;
+}
 
 function table(headers, rows) {
   return `<thead><tr>${headers.map(x => `<th scope="col">${esc(x)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map((x,i) => `<${i ? 'td' : 'th'}${i ? '' : ' scope="row"'}>${esc(x)}</${i ? 'td' : 'th'}>`).join('')}</tr>`).join('')}</tbody>`;
@@ -75,13 +88,14 @@ function renderScenarios() {
     const s = cases[key] || {};
     const upside = finite(s.price) && finite(l?.price) ? s.price/l.price-1 : null;
     const unpriced = finite(s.forwardEBITDA) && s.forwardEBITDA <= 0;
-    return `<article class="scenario-card ${key}${unpriced?' unpriced':''}"><h3>${labels[key]}</h3><div class="scenario-price">${unpriced?'倍数不适用':money(s.price)}</div><p class="scenario-upside">${unpriced?'预期亏损，需另行估值':`相对收盘 ${pct(upside,1,true)}`}</p><p>${notes[key]}</p><dl><dt>平均 USDC</dt><dd>${dollars(s.averageUSDC)}</dd><dt>预期 EBITDA</dt><dd>${dollars(s.forwardEBITDA)}</dd><dt>收益率 / 留存</dt><dd>${pct(s.reserveYield)} / ${pct(s.reserveRetention)}</dd><dt>EV / EBITDA</dt><dd>${number(s.assumptions?.multiple ?? settings.scenarios[key].multiple)}x</dd></dl></article>`;
+    return `<article class="scenario-card ${key}${unpriced?' unpriced':''}"><h3>${labels[key]}</h3><div class="scenario-price">${unpriced?'倍数不适用':money(s.price)}</div><p class="scenario-upside">${unpriced?'预期亏损，需另行估值':`相对收盘 ${pct(upside,1,true)}`}</p><p>${notes[key]}</p><dl><dt>平均 USDC</dt><dd>${dollars(s.averageUSDC)}</dd><dt>经营利润代理</dt><dd>${dollars(s.forwardEBITDA)}</dd><dt>收益率 / 留存</dt><dd>${pct(s.reserveYield)} / ${pct(s.reserveRetention)}</dd><dt>EV / 利润代理</dt><dd>${number(s.assumptions?.multiple ?? settings.scenarios[key].multiple)}x</dd></dl></article>`;
   }).join('');
   const metrics = [
     ['期末 USDC 增长假设','assumptions',a => pct(a?.usdcGrowth,1,true)],['未来利率变化','assumptions',a => finite(a?.yieldShift)?`${number(a.yieldShift*10000,0)}bp`:'需补'],['EV / EBITDA 假设','assumptions',a => finite(a?.multiple)?`${number(a.multiple)}x`:'需补'],
     ['平均 USDC','averageUSDC',dollars],['储备收益率','reserveYield',pct],['储备收入留存','reserveRetention',pct],
     ['经常性其他收入 / 年','annualRecurringOtherRevenue',dollars],['调整后经营费用 / 年','annualAdjustedOpex',dollars],
-    ['预期 EBITDA','forwardEBITDA',dollars],['企业价值','enterpriseValue',dollars],['企业净现金','corporateNetCash',dollars],
+    ['现金SBC工资税 / 年代理','annualSBCPayrollTax',dollars],['现金薪酬替代 / 年代理','annualRecurringSBC',dollars],
+    ['经营利润代理（非报告 EBITDA）','forwardEBITDA',dollars],['企业价值','enterpriseValue',dollars],['企业净现金','corporateNetCash',dollars],
     ['未来资本承诺','futureCapitalCommitments',dollars],['稀释股数代理','dilutedShares',n => finite(n) ? `${number(n/1e6,1)}M` : '需补'],['股权价值','equityValue',dollars],['每股情景价格','price',money]
   ];
   $('scenario-table').innerHTML = table(['计算项','Bear','Base','Bull'], metrics.map(([label,key,fmt]) => [label,...['bear','base','bull'].map(k => {
@@ -97,32 +111,34 @@ const fields = [
   {key:'retentionShift',label:'储备留存率变动',unit:'pp',factor:100,min:-25,max:25,step:.5,note:'渠道分成改善为正，恶化为负'},
   {key:'otherGrowth',label:'经常性其他收入增长',unit:'%',factor:100,min:-50,max:150,step:5,note:'剔除 ARC 预售等一次性项目'},
   {key:'opexGrowth',label:'调整后经营费用增长',unit:'%',factor:100,min:-30,max:70,step:1,note:'不含用估值倍数隐含的股东成本'},
-  {key:'dilution',label:'未来稀释股数增加',unit:'%',factor:100,min:0,max:25,step:.5,note:'SBC、融资与并购等的假设'},
-  {key:'multiple',label:'EV / EBITDA 倍数',unit:'x',factor:1,min:5,max:60,step:1,note:'判断变量，没有已验证的合理倍数'},
+  {key:'dilution',label:'代理外新增薪酬经济稀释',unit:'%',factor:100,min:0,max:25,step:.5,note:'权益模式使用；现金替代模式取消同份稀释'},
+  {key:'multiple',label:'EV / 经营利润代理倍数',unit:'x',factor:1,min:5,max:60,step:1,note:'研究设定；不等于报告 EBITDA 倍数'},
   {key:'reserveYieldOverride',label:'当前储备收益率覆盖值',unit:'%',factor:100,min:.1,max:8,step:.1,note:'留空按实际储备收益率校准',global:true},
-  {key:'annualOpexOverride',label:'年调整后经营费用覆盖值',unit:'$M',factor:1e-6,min:100,max:2000,step:5,note:'留空使用最近公开全年指引中点',global:true},
+  {key:'annualOpexOverride',label:'年调整后经营费用覆盖值',unit:'$M',factor:1e-6,min:100,max:2000,step:5,note:'默认指引中点不含SBC与相关工资税',global:true},
   {key:'dilutedSharesOverride',label:'稀释股数代理覆盖值',unit:'M',factor:1e-6,min:100,max:1000,step:1,note:'留空使用当时已披露的股数代理',global:true},
   {key:'annualRecurringOtherRevenueOverride',label:'经常性其他收入 / 年覆盖值',unit:'$M',factor:1e-6,min:0,max:1500,step:5,note:'默认历史指引代理；预售不能直接年化',global:true},
   {key:'otherContributionMarginOverride',label:'其他收入贡献率覆盖值',unit:'%',factor:100,min:0,max:100,step:1,note:'会计代理，未披露真实分部贡献率',global:true},
   {key:'corporateNetCashOverride',label:'企业净现金覆盖值',unit:'$M',factor:1e-6,min:-2000,max:10000,step:10,note:'排除客户储备与ARC预收；可显式调整',global:true},
-  {key:'futureCapitalCommitmentsOverride',label:'未来资本承诺 / 现金占用',unit:'$M',factor:1e-6,min:0,max:5000,step:10,note:'默认0为需补假设；股权支付进入稀释',global:true}
+  {key:'futureCapitalCommitmentsOverride',label:'未来资本承诺 / 现金占用',unit:'$M',factor:1e-6,min:0,max:5000,step:10,note:'默认0为需补假设；股权支付进入稀释',global:true},
+  {key:'annualSBCPayrollTaxOverride',label:'年现金工资税覆盖值',unit:'$M',factor:1e-6,min:0,max:200,step:1,note:'留空使用4×季税额代理，不是官方NTM数',global:true},
+  {key:'annualRecurringSBCOverride',label:'年现金薪酬替代覆盖值',unit:'$M',factor:1e-6,min:0,max:1500,step:5,note:'现金模式使用4×P&L SBC；资本化SBC另列',global:true},
+  {key:'financingDilution',label:'额外融资 / 并购新增权益',unit:'%',factor:100,min:0,max:50,step:.5,note:'与薪酬模式分开计入，不扣相同现金对价',global:true}
 ];
 function buildSettings() {
-  $('settings-form').innerHTML = fields.map(f => `<div class="setting"><label for="input-${f.key}">${f.label}</label><div class="setting-input"><input type="number" id="input-${f.key}" name="${f.key}" min="${f.min}" max="${f.max}" step="${f.step}" inputmode="decimal" aria-describedby="note-${f.key}"><span class="unit">${f.unit}</span></div><small id="note-${f.key}">${f.note}</small></div>`).join('');
+  $('settings-form').innerHTML = fields.map(f => `<div class="setting"><label for="input-${f.key}">${f.label}</label><div class="setting-input"><input type="number" id="input-${f.key}" name="${f.key}" min="${f.min}" max="${f.max}" step="any" inputmode="decimal" aria-describedby="note-${f.key}"><span class="unit">${f.unit}</span></div><small id="note-${f.key}">${f.note}</small></div>`).join('');
   syncSettings();
   $('settings-form').addEventListener('submit', e => e.preventDefault());
   $('settings-form').addEventListener('change', event => {
     const f = fields.find(f => f.key === event.target.name);
     if (!f) return;
     const input = event.target;
-    if (input.value === '' && f.global) settings[f.key] = null;
+    if (input.value === '' && f.global) settings[f.key] = f.key==='financingDilution'?defaultSettings.financingDilution:null;
     else {
       if (input.value === '' || !input.checkValidity()) { input.reportValidity(); syncSettings(); return; }
       const value = Number(input.value) / f.factor;
       if (f.global) settings[f.key] = value;
       else {
-        const delta = value - defaultSettings.scenarios.base[f.key];
-        for (const key of ['bear','base','bull']) settings.scenarios[key][f.key] = defaultSettings.scenarios[key][f.key] + delta;
+        linkScenarioField(f.key,value);
       }
     }
     recalculate();
@@ -134,27 +150,37 @@ function syncSettings() {
     $(`input-${f.key}`).value = finite(value) ? Math.round(value*f.factor*10000)/10000 : '';
     if (f.global) {
       const fundamentals = analysis?.latest?.fundamentals || {};
-      const automatic = {reserveYieldOverride:fundamentals.currentReserveYield,annualOpexOverride:fundamentals.annualAdjustedOpex,dilutedSharesOverride:fundamentals.dilutedShares,annualRecurringOtherRevenueOverride:fundamentals.annualRecurringOtherRevenue,otherContributionMarginOverride:fundamentals.otherContributionMargin,corporateNetCashOverride:fundamentals.corporateNetCash,futureCapitalCommitmentsOverride:fundamentals.futureCapitalCommitments}[f.key];
+      const automatic = {reserveYieldOverride:fundamentals.currentReserveYield,annualOpexOverride:fundamentals.annualAdjustedOpex,dilutedSharesOverride:fundamentals.dilutedShares,annualRecurringOtherRevenueOverride:fundamentals.annualRecurringOtherRevenue,otherContributionMarginOverride:fundamentals.otherContributionMargin,corporateNetCashOverride:fundamentals.corporateNetCash,futureCapitalCommitmentsOverride:fundamentals.futureCapitalCommitments,annualSBCPayrollTaxOverride:4*(fundamentals.sbcPayrollTaxes ?? fundamentals.SBCPayrollTaxes),annualRecurringSBCOverride:4*fundamentals.stockBasedCompensationExpense,financingDilution:0}[f.key];
       $(`input-${f.key}`).placeholder = finite(automatic) ? number(automatic*f.factor,2) : '需补';
     }
   }
   $('event-risk').value = settings.eventRisk;
   $('depeg-risk').checked = settings.depeg;
+  $('valuation-method').value = settings.valuationMethod || 'retained-reserve';
+  $('compensation-mode').value = settings.compensationMode || 'equity';
+  $('opex-includes-payroll').checked = !!settings.opexIncludesSBCPayrollTax;
+  $('input-dilution').disabled = settings.compensationMode==='cash';
+  $('input-annualRecurringSBCOverride').disabled = settings.compensationMode!=='cash';
+  $('input-annualSBCPayrollTaxOverride').disabled = !!settings.opexIncludesSBCPayrollTax;
 }
 function renderSensitivity() {
   const f = analysis.latest?.fundamentals;
   if (!f) { $('sensitivity-table').innerHTML = table(['等待数据'],[['核心数据不足']]); return; }
   const currentYield = settings.reserveYieldOverride ?? f.currentReserveYield;
+  if (!finite(currentYield)) {$('sensitivity-table').innerHTML=table(['等待数据'],[['缺少有效储备收益率，无法生成价格矩阵']]);return;}
   const baseYield = currentYield + settings.scenarios.base.yieldShift;
-  const yields = [-.01,-.005,0,.005,.01].map(delta => Math.max(.001, baseYield+delta));
-  const growths = [-.20,-.10,0,.10,.20].map(delta => settings.scenarios.base.usdcGrowth+delta);
+  const yields = [...new Set([-.01,-.005,0,.005,.01].map(delta => Math.max(.001,Math.max(currentYield+scenarioLimits.yieldShift[0],Math.min(currentYield+scenarioLimits.yieldShift[1],baseYield+delta)))))];
+  const growths = [...new Set([-.20,-.10,0,.10,.20].map(delta => Math.max(scenarioLimits.usdcGrowth[0],Math.min(scenarioLimits.usdcGrowth[1],settings.scenarios.base.usdcGrowth+delta))))];
   const rows = growths.map((growth,ri) => `<tr><th scope="row">${pct(growth,0,true)}</th>${yields.map((yieldValue,ci) => {
     const a = {...settings.scenarios.base,usdcGrowth:growth,yieldShift:yieldValue-currentYield};
     const scenario = Model.calculateScenario(f,a,settings);
     const value = scenario?.price;
     const relative = finite(value) && analysis.latest.price > 0 ? Math.max(-1,Math.min(1,value/analysis.latest.price-1)) : 0;
     const color = relative >= 0 ? `rgba(102,195,154,${.07+relative*.2})` : `rgba(240,132,140,${.07-relative*.2})`;
-    return `<td><button type="button" data-growth="${growth}" data-yield="${yieldValue}" style="background:${color}" class="${ri===2 && ci===2?'current-cell':''}" aria-label="期末USDC变化${pct(growth,0)}，收益率${pct(yieldValue,2)}，情景价格${money(value)}">${money(value)}</button></td>`;
+    const unpriced=finite(scenario?.forwardEBITDA)&&scenario.forwardEBITDA<=0;
+    const text=unpriced?'不适用':money(value),usable=finite(value)||finite(scenario?.forwardEBITDA);
+    const current=Math.abs(growth-settings.scenarios.base.usdcGrowth)<1e-9&&Math.abs(yieldValue-baseYield)<1e-9;
+    return `<td><button type="button" data-growth="${growth}" data-yield="${yieldValue}" style="background:${color}" class="${current?'current-cell':''}" aria-pressed="${current}" ${usable?'':'disabled'} aria-label="期末USDC变化${pct(growth,0)}，收益率${pct(yieldValue,2)}，情景价格${text}${unpriced?'，预期盈利非正':''}">${text}</button></td>`;
   }).join('')}</tr>`);
   $('sensitivity-table').innerHTML = `<thead><tr><th scope="col">期末规模变化 / 收益率</th>${yields.map(y => `<th scope="col">${pct(y,2)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody>`;
 }
@@ -316,6 +342,7 @@ function selectChartDate(index) {
 function recalculate() {
   analysis = {...analysis,settings,latest:Model.evaluateSnapshot(data,analysis.latest.date,settings,{latest:true,asOf:new Date().toISOString().slice(0,10)})};
   renderDecision();renderScenarios();renderIndicators();renderBacktest();renderSources();syncSettings();
+  renderResearch(analysis,settings,researchState,Model);
   // Current assumptions never alter the historical baseline chart or backtest.
 }
 
@@ -332,8 +359,10 @@ async function start() {
     data.financialMetadata = financial.metadata;
     data.metadata.sources.financials = {status:'verified',asOf:financial.financials?.at(-1)?.periodEnd,fetchedAt:financial.metadata?.asOfDate,url:financial.financials?.at(-1)?.sourceUrl};
   }
+  restoreSettings();
   analysis = Model.analyze(data,settings);
-  buildSettings();renderDecision();renderScenarios();renderIndicators();renderBacktest();renderSources();
+  buildSettings();buildPortfolioForm();renderDecision();renderScenarios();renderIndicators();renderBacktest();renderSources();
+  renderResearch(analysis,settings,researchState,Model);
   $('loading-status').hidden = true;
   $('decision-surface').hidden = false;
   renderCharts();
@@ -343,19 +372,24 @@ async function start() {
     if (width !== lastWidth) { lastWidth=width; renderCharts(); }
   }).observe($('trade-chart'));
   $('export-data').disabled = false;
+  $('export-research').disabled = false;
 }
 document.querySelectorAll('[data-range]').forEach(button => button.addEventListener('click',()=>{
   range=button.dataset.range;
   document.querySelectorAll('[data-range]').forEach(b => { b.classList.toggle('selected',b===button); b.setAttribute('aria-pressed',String(b===button)); });
   renderCharts();
 }));
-$('reset-settings').addEventListener('click',()=>{ settings=structuredClone(defaultSettings);recalculate(); });
+$('reset-settings').addEventListener('click',()=>{ settings=structuredClone(defaultSettings);$('settings-feedback').textContent='已恢复基准假设和风险开关；账户输入仍保留。';recalculate(); });
 document.querySelectorAll('[data-stress]').forEach(button => button.addEventListener('click',()=>{
-  settings=structuredClone(defaultSettings);
   const stress=button.dataset.stress;
-  if (['rates','combined'].includes(stress)) for (const key of ['bear','base','bull']) settings.scenarios[key].yieldShift -= .01;
-  if (['usdc','combined'].includes(stress)) for (const key of ['bear','base','bull']) settings.scenarios[key].usdcGrowth = 2*((1+settings.scenarios[key].usdcGrowth/2)*.8-1);
-  if (['retention','combined'].includes(stress)) for (const key of ['bear','base','bull']) settings.scenarios[key].retentionShift -= .05;
+  const constraints=[];
+  for (const key of ['bear','base','bull']) {
+    const s=settings.scenarios[key];
+    if (['rates','combined'].includes(stress)) s.yieldShift=Math.max(-.04,s.yieldShift-.01);
+    if (['usdc','combined'].includes(stress)) {const next=2*((1+s.usdcGrowth/2)*.8-1);s.usdcGrowth=Math.max(-.9,next);if(s.usdcGrowth!==next)constraints.push(key+'规模路径');}
+    if (['retention','combined'].includes(stress)) s.retentionShift=Math.max(-.25,s.retentionShift-.05);
+  }
+  $('settings-feedback').textContent=`已在当前假设上叠加一次冲击；保留所选模型及风险开关。${constraints.length?constraints.join('、')+'达到输入边界。':''}`;
   recalculate();
 }));
 $('sensitivity-table').addEventListener('click',event=>{
@@ -364,13 +398,73 @@ $('sensitivity-table').addEventListener('click',event=>{
   const currentYield=settings.reserveYieldOverride ?? analysis.latest.fundamentals.currentReserveYield;
   const updates={usdcGrowth:Number(button.dataset.growth),yieldShift:Number(button.dataset.yield)-currentYield};
   for (const [field,value] of Object.entries(updates)) {
-    const delta=value-defaultSettings.scenarios.base[field];
-    for (const key of ['bear','base','bull']) settings.scenarios[key][field]=defaultSettings.scenarios[key][field]+delta;
+    linkScenarioField(field,value);
   }
   recalculate();
+  $('sensitivity-table').querySelector('.current-cell')?.focus({preventScroll:true});
 });
 $('event-risk').addEventListener('change',event=>{ settings.eventRisk=event.target.value;recalculate(); });
 $('depeg-risk').addEventListener('change',event=>{ settings.depeg=event.target.checked;recalculate(); });
+$('valuation-method').addEventListener('change',event=>{settings.valuationMethod=event.target.value;recalculate();});
+$('compensation-mode').addEventListener('change',event=>{settings.compensationMode=event.target.value;recalculate();});
+$('opex-includes-payroll').addEventListener('change',event=>{settings.opexIncludesSBCPayrollTax=event.target.checked;recalculate();});
+document.querySelectorAll('[data-position]').forEach(button=>button.addEventListener('click',()=>{
+  researchState.positionView=button.dataset.position;
+  document.querySelectorAll('[data-position]').forEach(b=>{b.classList.toggle('selected',b===button);b.setAttribute('aria-pressed',String(b===button));});
+  renderResearch(analysis,settings,researchState,Model);
+}));
+$('portfolio-form').addEventListener('submit',event=>event.preventDefault());
+$('portfolio-form').addEventListener('change',()=>{
+  researchState.portfolio=readPortfolioForm();researchState.demo=false;
+  $('budget-demo-label').textContent=researchState.portfolio?'按自行填写的假设账户测算；未连接券商。':'请填写全部预算字段，并保持现金和标的市值不超过账户总额。';
+  renderResearch(analysis,settings,researchState,Model);
+});
+$('load-demo-account').addEventListener('click',()=>{
+  const example={portfolioValue:100000,currentHoldingValue:0,availableCash:30000,maxWeight:.10,maxStressLoss:2000};
+  fillPortfolioForm(example);researchState.portfolio=example;researchState.demo=true;
+  $('budget-demo-label').textContent='演示账户：$100,000总资产、$30,000可用现金、10%标的权重、$2,000压力损失预算；不是你的账户或推荐配置。';
+  renderResearch(analysis,settings,researchState,Model);
+});
+$('clear-account').addEventListener('click',()=>{
+  fillPortfolioForm(null);researchState.portfolio=null;researchState.demo=false;
+  $('budget-demo-label').textContent='账户输入已清空。';renderResearch(analysis,settings,researchState,Model);
+});
+const storageKey='stablemonitor:crcl:assumptions:v1.1';
+function restoreSettings() {
+  try {
+    const raw=localStorage.getItem(storageKey);if(!raw)return;
+    const record=JSON.parse(raw),saved=record.settings;
+    if(!saved || record.version!=='1.1')throw new Error('保存版本不兼容');
+    const restored=structuredClone(defaultSettings);
+    for(const [name,bounds] of Object.entries(scenarioLimits))for(const key of ['bear','base','bull']){
+      const value=saved.scenarios?.[key]?.[name];
+      if(!finite(value)||value<bounds[0]||value>bounds[1])throw new Error('保存参数超出范围');
+      restored.scenarios[key][name]=value;
+    }
+    for(const field of fields.filter(f=>f.global)){
+      const value=saved[field.key];if(value==null){restored[field.key]=field.key==='financingDilution'?defaultSettings.financingDilution:null;continue;}
+      if(!finite(value)||value*field.factor<field.min||value*field.factor>field.max)throw new Error('保存参数超出范围');
+      restored[field.key]=value;
+    }
+    if(!['retained-reserve','issuer-sensitivity'].includes(saved.valuationMethod)||!['equity','cash'].includes(saved.compensationMode)||!['normal','high'].includes(saved.eventRisk))throw new Error('保存模式无效');
+    restored.valuationMethod=saved.valuationMethod;restored.compensationMode=saved.compensationMode;restored.eventRisk=saved.eventRisk;
+    restored.depeg=saved.depeg===true;restored.opexIncludesSBCPayrollTax=saved.opexIncludesSBCPayrollTax===true;
+    settings=restored;
+    $('settings-feedback').textContent='已载入本浏览器保存的研究假设；历史基线和账户输入不变。';
+  } catch {
+    settings=structuredClone(defaultSettings);
+    $('settings-feedback').textContent='保存参数无法使用，已采用基准假设；可重新保存或导出研究快照。';
+  }
+}
+$('save-settings').addEventListener('click',()=>{
+  try{localStorage.setItem(storageKey,JSON.stringify({version:'1.1',savedAt:new Date().toISOString(),settings}));$('settings-feedback').textContent='研究假设已保存在当前浏览器；账户预算不自动保存。';}
+  catch{$('settings-feedback').textContent='浏览器无法保存参数，可使用“导出当前研究快照”。';}
+});
+$('export-research').addEventListener('click',()=>{
+  const report={version:Model.MODEL_VERSION,exportedAt:new Date().toISOString(),priceAsOf:analysis.latest.date,sourceMetadata:data.metadata,settings,portfolio:researchState.portfolio,portfolioIsDemo:researchState.demo,decision:{rule:analysis.latest.action,positionView:researchState.positionView,scenarios:analysis.latest.scenarios,checklist:analysis.latest.checklist,reverseValuation:analysis.latest.reverseValuation},historyFormulaVersion:analysis.historyFormulaVersion};
+  const url=URL.createObjectURL(new Blob([JSON.stringify(report,null,2)],{type:'application/json'})),a=document.createElement('a');
+  a.href=url;a.download=`CRCL-研究快照-${displayDate(analysis.latest.date)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+});
 $('export-data').addEventListener('click',()=>{
   const rows = [['date','close','bear_value','base_value','bull_value','buy_score','sell_score','action','marker'],...(analysis.history||[]).map(p=>[p.date,p.price,p.bearPrice,p.basePrice,p.bullPrice,p.buyScore,p.sellScore,p.action,p.marker?.type])];
   const csv = '\uFEFF'+rows.map(row=>row.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\r\n');
