@@ -30,6 +30,10 @@ a{color:var(--gold);text-decoration:none}
 .tab{padding:12px 20px;font-size:13px;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;transition:.2s}
 .tab:hover{color:var(--text)}
 .tab.active{color:var(--gold);border-bottom-color:var(--gold)}
+.tab.trade-link{color:var(--gold2);font-weight:700}
+.history-note{color:var(--text2);font-size:12px;line-height:1.8;margin-bottom:16px}
+.research-banner{background:var(--navy2);border:1px solid var(--gold);border-radius:8px;padding:16px 18px;margin-bottom:20px;font-size:13px;line-height:1.8}
+.research-banner a{display:inline-block;font-weight:700;text-decoration:underline;text-underline-offset:3px}
 
 .content{max-width:1400px;margin:0 auto;padding:20px}
 .panel{display:none}
@@ -116,35 +120,43 @@ td.l{text-align:left}
 <div class="header">
   <h1>STABLECOIN DASHBOARD</h1>
   <div class="meta">
-    <span class="status"><span class="dot"></span> LIVE</span>
+    <span class="status"><span class="dot"></span><span id="data-status">供应量更新 · 其余为历史快照</span></span>
     <span id="update-time">Loading...</span>
   </div>
 </div>
 
 <div class="tabs">
+  <a class="tab trade-link" href="./crcl.html">CRCL 买卖点 ↗</a>
   <div class="tab active" data-tab="overview">核心仪表盘</div>
-  <div class="tab" data-tab="rates">利率与收入测算</div>
-  <div class="tab" data-tab="predict">Q1财报预测</div>
-  <div class="tab" data-tab="compare">CRCL vs USDT</div>
-  <div class="tab" data-tab="timeline">事件时间表</div>
+  <div class="tab" data-tab="rates">利率测算 · 2026-05 快照</div>
+  <div class="tab" data-tab="predict">Q1 预测 · 2026-05 快照</div>
+  <div class="tab" data-tab="compare">CRCL vs USDT · 历史</div>
+  <div class="tab" data-tab="timeline">事件表 · 2026-05 快照</div>
   <div class="tab" data-tab="sources">数据源</div>
 </div>
 
 <div class="content">
+<div class="research-banner">
+  <strong>新增：CRCL 买卖点研究图表</strong><br>
+  查看股价、情景估值与条件信号，并检查每个判断的数据日期和触发条件。
+  <a href="./crcl.html">打开 CRCL 买卖点 →</a><br>
+  本页仅美元稳定币供应模块每次打开更新；利率、财报预测、公司比较及事件内容为 <strong>2026-05 历史快照</strong>，其中“即将”指当时预期，不能作为当前交易依据。
+</div>
 
 <!-- ============ Tab 1: Overview ============ -->
 <div class="panel active" id="panel-overview">
   <div class="kpi-row" id="kpi-row">
-    <div class="kpi"><div class="label">总发行量 (Top 10)</div><div class="value" id="kpi-total">--</div><div class="sub" id="kpi-total-sub"></div></div>
-    <div class="kpi"><div class="label">USDT 占比</div><div class="value" id="kpi-usdt-share">--</div></div>
-    <div class="kpi"><div class="label">USDC 占比</div><div class="value" id="kpi-usdc-share">--</div></div>
-    <div class="kpi"><div class="label">HHI 集中度</div><div class="value" id="kpi-hhi">--</div><div class="sub">越高越集中</div></div>
-    <div class="kpi"><div class="label">Fed Funds Rate</div><div class="value">3.50-3.75%</div><div class="sub">FOMC 4/29 Hold</div></div>
-    <div class="kpi"><div class="label">3M T-Bill</div><div class="value">3.70%</div><div class="sub">H.15 5/4/2026</div></div>
+    <div class="kpi"><div class="label">美元稳定币总发行量</div><div class="value" id="kpi-total">--</div><div class="sub" id="kpi-total-sub"></div></div>
+    <div class="kpi"><div class="label">USDT 占美元稳定币总量</div><div class="value" id="kpi-usdt-share">--</div></div>
+    <div class="kpi"><div class="label">USDC 占美元稳定币总量</div><div class="value" id="kpi-usdc-share">--</div></div>
+    <div class="kpi"><div class="label">HHI 集中度</div><div class="value" id="kpi-hhi">--</div><div class="sub">全部美元稳定币，0–10,000</div></div>
+    <div class="kpi"><div class="label">Fed Funds · 历史快照</div><div class="value">3.50-3.75%</div><div class="sub">2026-05 快照，未自动更新</div></div>
+    <div class="kpi"><div class="label">3M T-Bill · 历史快照</div><div class="value">3.70%</div><div class="sub">2026-05-04，未自动更新</div></div>
   </div>
 
   <div class="section">
-    <div class="section-title">稳定币发行量排名 Top 10 ($1B+)</div>
+    <div class="section-title">美元稳定币发行量排名 Top 10 ($1B+)</div>
+    <p class="history-note">总量、份额与 HHI 使用 API 中全部有正发行量的美元稳定币；榜单仅显示其中发行量 ≥ $1B 的前 10 名。缺失数据标为“需补”。</p>
     <div class="table-wrap">
       <table>
         <thead><tr>
@@ -159,16 +171,17 @@ td.l{text-align:left}
   <div class="insight" id="insight-box">加载数据后自动生成趋势分析...</div>
 
   <div class="section">
-    <div class="section-title">USDC 季度趋势</div>
+    <div class="section-title">USDC 季度趋势 · 2026-05 历史快照</div>
+    <p class="history-note">下表沿用旧研究数据，未自动更新。2026-03-16 的 $79.2B 是季中披露快照，不代表 Q1 期末实际发行量。</p>
     <div class="table-wrap">
       <table>
-        <thead><tr><th class="l">季度</th><th class="r">期末发行量($B)</th><th class="r">环比变动</th><th class="r">环比%</th><th class="l">备注</th></tr></thead>
+        <thead><tr><th class="l">季度 / 快照</th><th class="r">期末 / 快照发行量($B)</th><th class="r">较前值变动</th><th class="r">较前值%</th><th class="l">备注</th></tr></thead>
         <tbody>
           <tr><td class="l">Q1'25</td><td class="r">43.0</td><td class="r">--</td><td class="r">--</td><td class="l">IPO前低基数</td></tr>
           <tr><td class="l">Q2'25</td><td class="r">57.5</td><td class="r pos">+14.5B</td><td class="r pos">+33.7%</td><td class="l">IPO + GENIUS Act签署</td></tr>
           <tr><td class="l">Q3'25</td><td class="r">66.2</td><td class="r pos">+8.7B</td><td class="r pos">+15.1%</td><td class="l">机构资金入场</td></tr>
           <tr><td class="l">Q4'25</td><td class="r">75.3</td><td class="r pos">+9.1B</td><td class="r pos">+13.7%</td><td class="l">牛市 + Coinbase推广</td></tr>
-          <tr><td class="l"><strong>Q1'26</strong></td><td class="r"><strong>79.2</strong></td><td class="r pos"><strong>+3.9B</strong></td><td class="r pos"><strong>+5.2%</strong></td><td class="l">Circle官方3/16披露$79.2B; 增速放缓但仍正增长</td></tr>
+          <tr><td class="l"><strong>2026-03-16 快照</strong></td><td class="r"><strong>79.2</strong></td><td class="r pos"><strong>+3.9B</strong></td><td class="r pos"><strong>+5.2%</strong></td><td class="l">Circle季中披露，较Q4期末快照变化；Q1期末实际值需补</td></tr>
         </tbody>
       </table>
     </div>
@@ -177,6 +190,7 @@ td.l{text-align:left}
 
 <!-- ============ Tab 2: Rates ============ -->
 <div class="panel" id="panel-rates">
+  <p class="history-note"><strong>2026-05 历史快照：</strong>本标签的利率、会议概率、收入参数与情景均未自动更新，不用于当前买卖点计算。</p>
   <div class="section">
     <div class="section-title">美国国债收益率曲线 (5/4/2026)</div>
     <div id="yield-curve" style="padding:8px 0"></div>
@@ -247,20 +261,21 @@ td.l{text-align:left}
 
 <!-- ============ Tab 3: Q1 Prediction ============ -->
 <div class="panel" id="panel-predict">
+  <p class="history-note"><strong>2026-05 历史快照：</strong>保留当时的 Q1 财报预测，未以之后发布的财报校准。季中供应快照不能直接替代季度平均或期末实际发行量。</p>
   <div class="section">
     <div class="section-title">Circle Q1'26 财报 AI 预测 (5/11盘后发布)</div>
     <div class="insight" style="border-left-color:var(--green)">
       <strong>方法论:</strong> 基于链上可观测数据(USDC发行量、铸造/赎回、链上交易量) + 利率环境(Q1平均3M T-Bill) + 公司guidance + 历史季节性，构建底层收入模型。<br>
-      <strong>核心输入:</strong> Circle 3/16官方披露USDC $79.2B | Q1平均USDC估算 ~$77B | Q4'25平均 ~$76.2B | 3M T-Bill Q1均值 ~3.65%
+      <strong>历史输入:</strong> Circle 3/16季中披露USDC $79.2B | Q1平均USDC旧估算 ~$77B（需以每日数据重算）| Q4'25平均 ~$76.2B | 3M T-Bill Q1均值 ~3.65%
     </div>
   </div>
 
   <div class="predict-grid">
     <div class="predict-card">
       <h3>链上数据输入 (On-Chain Observables)</h3>
-      <div class="metric"><span class="k">Q1末USDC发行量</span><span class="v">$79.2B (Circle 3/16披露)</span></div>
+      <div class="metric"><span class="k">3/16 USDC季中快照</span><span class="v">$79.2B (非Q1期末实际)</span></div>
       <div class="metric"><span class="k">Q4末USDC发行量</span><span class="v">$75.3B</span></div>
-      <div class="metric"><span class="k">Q1平均USDC (估)</span><span class="v">~$77.0B (线性插值)</span></div>
+      <div class="metric"><span class="k">Q1平均USDC (旧估计)</span><span class="v">~$77.0B (需以每日数据重算)</span></div>
       <div class="metric"><span class="k">Q4平均USDC</span><span class="v">~$76.2B</span></div>
       <div class="metric"><span class="k">QoQ平均增长</span><span class="v">+$0.8B (+1.1%)</span></div>
       <div class="metric"><span class="k">EURC发行量</span><span class="v">$382.8M (vs Q4 $309.6M, +24%)</span></div>
@@ -286,7 +301,7 @@ td.l{text-align:left}
       <table>
         <thead><tr><th class="l">指标</th><th class="r">Q4'25 实际</th><th class="r">Q1'26 预测</th><th class="r">QoQ</th><th class="l">推导逻辑</th></tr></thead>
         <tbody>
-          <tr><td>平均USDC ($B)</td><td class="r">76.2</td><td class="r">77.0</td><td class="r pos">+1.1%</td><td>线性插值: (75.3+79.2)/2</td></tr>
+          <tr><td>平均USDC ($B)</td><td class="r">76.2</td><td class="r">77.0</td><td class="r pos">+1.1%</td><td>旧估计：季中快照插值，不能视为Q1平均实际</td></tr>
           <tr><td>储备收益率</td><td class="r">3.52%</td><td class="r">3.55%</td><td class="r pos">+3bp</td><td>Q1 3M T-Bill均值略升</td></tr>
           <tr><td>储备收入 ($M)</td><td class="r">683</td><td class="r">684</td><td class="r pos">+0.1%</td><td>77.0B x 3.55% / 4 = $684M</td></tr>
           <tr><td>Other Revenue ($M)</td><td class="r">27</td><td class="r">38-43</td><td class="r pos">+41~59%</td><td>Guidance $150-170M/年; CPN加速</td></tr>
@@ -349,6 +364,7 @@ td.l{text-align:left}
 
 <!-- ============ Tab 4: Compare ============ -->
 <div class="panel" id="panel-compare">
+  <p class="history-note"><strong>2026-05 历史快照：</strong>发行量、股价、估值、商业与监管判断保留当时版本，未自动刷新或逐条重新验证。</p>
   <div class="section">
     <div class="section-title">Circle (CRCL) vs Tether (USDT) -- 15维度对比</div>
     <div id="compare-table"></div>
@@ -363,6 +379,7 @@ td.l{text-align:left}
 
 <!-- ============ Tab 5: Timeline ============ -->
 <div class="panel" id="panel-timeline">
+  <p class="history-note"><strong>2026-05 历史快照：</strong>“即将”与未来窗口代表当时的预期，不代表当前日历、最新进展或已确认结果。</p>
   <div class="section">
     <div class="section-title">行业重大事件时间表</div>
     <div id="timeline-list"></div>
@@ -393,8 +410,8 @@ td.l{text-align:left}
       </table>
     </div>
     <div class="insight">
-      本页面直接调用 DefiLlama 公开 API, 每次打开自动刷新。<br>
-      利率和事件数据需手动更新 (或让 Claude 用 WebFetch 抓取后更新)。
+      本页面仅美元稳定币供应模块直接调用 DefiLlama 公开 API，每次打开重新拉取；拉取时间不等于源数据观察时间。<br>
+      表中频率描述源数据的发布频率，不代表本页全部实现了自动采集。利率、财报预测、股价、比较与事件内容均为 2026-05 历史快照；当前 CRCL 条件信号请查看 <a href="./crcl.html">买卖点研究页</a>。
     </div>
   </div>
 </div>
@@ -406,7 +423,7 @@ td.l{text-align:left}
 </div>
 
 <script>
-document.querySelectorAll('.tab').forEach(tab => {
+document.querySelectorAll('.tab[data-tab]').forEach(tab => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
@@ -434,70 +451,97 @@ function fmt(n, dec=2) {
 function pct(n, total) { return (n/total*100).toFixed(1) + '%'; }
 function chgClass(n) { return n >= 0 ? 'pos' : 'neg'; }
 function chgFmt(n) {
+  if (n === null) return '需补';
   const s = n >= 0 ? '+' : '';
   if (Math.abs(n) >= 1e9) return s + (n/1e9).toFixed(2) + 'B';
   if (Math.abs(n) >= 1e6) return s + (n/1e6).toFixed(0) + 'M';
   return s + n.toFixed(0);
 }
+function observedNumber(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+function changeFrom(current, previous) {
+  const start = observedNumber(previous);
+  return start !== null && start >= 0 ? current - start : null;
+}
+function changePct(current, previous) {
+  const start = observedNumber(previous);
+  return start !== null && start > 0 ? (current - start) / start * 100 : null;
+}
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
+}
 
 async function loadData() {
   try {
     const res = await fetch('https://stablecoins.llama.fi/stablecoins?includePrices=true');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
+    if (!Array.isArray(data.peggedAssets)) throw new Error('供应数据结构不完整');
 
-    let rows = [];
+    const universe = [];
     for (const c of data.peggedAssets) {
-      const supply = c.circulating?.peggedUSD || 0;
-      if (supply < 1e9) continue;
-      const price = c.price || 1;
-      const d1 = c.circulatingPrevDay?.peggedUSD ? supply - c.circulatingPrevDay.peggedUSD : 0;
-      const d7 = c.circulatingPrevWeek?.peggedUSD ? supply - c.circulatingPrevWeek.peggedUSD : 0;
-      const d30 = c.circulatingPrevMonth?.peggedUSD ? supply - c.circulatingPrevMonth.peggedUSD : 0;
+      const supply = observedNumber(c.circulating?.peggedUSD);
+      if (c.pegType !== 'peggedUSD' || supply === null || supply <= 0) continue;
+      const observedPrice = observedNumber(c.price);
+      const price = observedPrice !== null && observedPrice > 0 ? observedPrice : null;
+      const d1 = changeFrom(supply, c.circulatingPrevDay?.peggedUSD);
+      const d7 = changeFrom(supply, c.circulatingPrevWeek?.peggedUSD);
+      const d30 = changeFrom(supply, c.circulatingPrevMonth?.peggedUSD);
+      const p30 = changePct(supply, c.circulatingPrevMonth?.peggedUSD);
       const type = STABLECOIN_TYPES[c.name] || '其他';
-      rows.push({ name: c.name, ticker: c.symbol, supply, price, d1, d7, d30, type });
+      universe.push({ name: c.name, ticker: c.symbol, supply, price, d1, d7, d30, p30, type });
     }
-    rows.sort((a, b) => b.supply - a.supply);
-    rows = rows.slice(0, 10);
+    if (!universe.length) throw new Error('未取得有效美元稳定币供应数据');
+    universe.sort((a, b) => b.supply - a.supply);
+    const rows = universe.filter(r => r.supply >= 1e9).slice(0, 10);
 
-    const total = rows.reduce((s, r) => s + r.supply, 0);
-    const usdt = rows.find(r => r.ticker === 'USDT');
-    const usdc = rows.find(r => r.ticker === 'USDC');
+    const total = universe.reduce((s, r) => s + r.supply, 0);
+    const usdt = universe.find(r => r.ticker === 'USDT');
+    const usdc = universe.find(r => r.ticker === 'USDC');
 
     document.getElementById('kpi-total').textContent = fmt(total, 1);
-    document.getElementById('kpi-total-sub').textContent = rows.length + ' stablecoins tracked';
-    document.getElementById('kpi-usdt-share').textContent = usdt ? pct(usdt.supply, total) : '--';
-    document.getElementById('kpi-usdc-share').textContent = usdc ? pct(usdc.supply, total) : '--';
-    const usdtS = usdt ? usdt.supply/total*100 : 0;
-    const usdcS = usdc ? usdc.supply/total*100 : 0;
-    document.getElementById('kpi-hhi').textContent = Math.round(usdtS*usdtS + usdcS*usdcS);
-    document.getElementById('update-time').textContent = 'Updated: ' + new Date().toLocaleString('zh-CN');
+    document.getElementById('kpi-total-sub').textContent = universe.length + ' 个美元稳定币；榜单显示 ' + rows.length + ' 个';
+    document.getElementById('kpi-usdt-share').textContent = usdt ? pct(usdt.supply, total) : '需补';
+    document.getElementById('kpi-usdc-share').textContent = usdc ? pct(usdc.supply, total) : '需补';
+    const hhi = universe.reduce((sum, r) => sum + Math.pow(r.supply / total * 100, 2), 0);
+    document.getElementById('kpi-hhi').textContent = Math.round(hhi);
+    document.getElementById('update-time').textContent = '供应量拉取：' + new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
 
     const tbody = document.getElementById('stable-table');
     tbody.innerHTML = rows.map((r, i) => `
       <tr>
         <td class="c">${i+1}</td>
-        <td class="l"><strong>${r.name}</strong> <span style="color:var(--text2)">${r.ticker}</span></td>
+        <td class="l"><strong>${escapeHtml(r.name)}</strong> <span style="color:var(--text2)">${escapeHtml(r.ticker)}</span></td>
         <td class="r">${fmt(r.supply, 2)}</td>
-        <td class="r">$${r.price.toFixed(4)}</td>
-        <td class="r ${chgClass(r.d1)}">${chgFmt(r.d1)}</td>
-        <td class="r ${chgClass(r.d7)}">${chgFmt(r.d7)}</td>
-        <td class="r ${chgClass(r.d30)}">${chgFmt(r.d30)}</td>
+        <td class="r">${r.price === null ? '需补' : '$' + r.price.toFixed(4)}</td>
+        <td class="r ${r.d1 === null ? '' : chgClass(r.d1)}">${chgFmt(r.d1)}</td>
+        <td class="r ${r.d7 === null ? '' : chgClass(r.d7)}">${chgFmt(r.d7)}</td>
+        <td class="r ${r.d30 === null ? '' : chgClass(r.d30)}">${chgFmt(r.d30)}</td>
         <td class="r">${pct(r.supply, total)}</td>
         <td class="c"><span class="tag tag-blue">${r.type}</span></td>
       </tr>
-    `).join('');
+    `).join('') || '<tr><td colspan="9">当前未取得发行量 ≥ $1B 的美元稳定币。</td></tr>';
 
-    const growing = rows.filter(r => r.d30 > 0).sort((a,b) => b.d30 - a.d30);
-    const shrinking = rows.filter(r => r.d30 < 0).sort((a,b) => a.d30 - b.d30);
+    const growing = rows.filter(r => r.d30 !== null && r.d30 > 0).sort((a,b) => b.d30 - a.d30);
+    const shrinking = rows.filter(r => r.d30 !== null && r.d30 < 0).sort((a,b) => a.d30 - b.d30);
+    const missing = rows.filter(r => r.d30 === null || r.p30 === null);
+    const trendItem = r => escapeHtml(r.ticker) + ' ' + chgFmt(r.d30) + ' (' + (r.p30 === null ? '增幅需补' : (r.p30 >= 0 ? '+' : '') + r.p30.toFixed(1) + '%') + ')';
     document.getElementById('insight-box').innerHTML =
-      '<strong>30D趋势:</strong><br>' +
-      (growing.length ? '<span class="pos">[增长]</span> ' + growing.map(r => `${r.ticker} ${chgFmt(r.d30)} (${(r.d30/r.supply*100).toFixed(1)}%)`).join(' | ') + '<br>' : '') +
-      (shrinking.length ? '<span class="neg">[下降]</span> ' + shrinking.map(r => `${r.ticker} ${chgFmt(r.d30)} (${(r.d30/r.supply*100).toFixed(1)}%)`).join(' | ') + '<br>' : '') +
-      '<br><strong>核心结论:</strong> 法币储备型(USDT/USDC/USD1)稳步增长; 合成型(USDe)大幅收缩; RWA收益型(BUIDL/USYC)是新增长极';
+      '<strong>榜单 30D 供应趋势：</strong><br>' +
+      (growing.length ? '<span class="pos">[增长]</span> ' + growing.map(trendItem).join(' | ') + '<br>' : '') +
+      (shrinking.length ? '<span class="neg">[下降]</span> ' + shrinking.map(trendItem).join(' | ') + '<br>' : '') +
+      (!growing.length && !shrinking.length ? '未观测到有历史基数的非零变化。<br>' : '') +
+      (missing.length ? '历史基数或增幅需补：' + missing.map(r => escapeHtml(r.ticker)).join('、') + '。<br>' : '') +
+      '增幅 =（当前发行量 − 30 日前发行量）÷ 30 日前发行量；供应变化本身不代表支付收入或股价方向。';
 
   } catch (err) {
     document.getElementById('stable-table').innerHTML =
-      `<tr><td colspan="9" style="color:var(--red);padding:20px">API Error: ${err.message}</td></tr>`;
+      `<tr><td colspan="9" style="color:var(--red);padding:20px">供应量需补：${escapeHtml(err.message)}</td></tr>`;
+    document.getElementById('insight-box').textContent = '供应数据加载失败，当前供应量与趋势需补。';
+    document.getElementById('data-status').textContent = '供应量加载失败 · 其余为历史快照';
+    document.querySelector('.status .dot').style.background = 'var(--red)';
+    document.getElementById('update-time').textContent = '供应量拉取失败';
   }
 }
 

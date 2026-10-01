@@ -1,0 +1,10 @@
+{
+  "name": "stablemonitor-crcl-methodology",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/model.test.mjs",
+    "update-data": "node scripts/update-data.mjs"
+  },
+  "engines": { "node": ">=22" }
+}

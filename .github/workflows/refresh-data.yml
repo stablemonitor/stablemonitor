@@ -1,0 +1,64 @@
+name: Refresh data and deploy StableMonitor
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '45 22 * * 1-5'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify model invariants
+        run: npm test
+      - name: Refresh public sources
+        if: github.event_name != 'push'
+        id: refresh
+        continue-on-error: true
+        run: npm run update-data
+      - name: Publish data and source status
+        if: github.event_name != 'push'
+        run: |
+          git add data/market-data.json
+          if ! git diff --cached --quiet; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git commit -m 'Refresh CRCL market data and source status'
+            git push
+          fi
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+      - name: Assemble public files
+        run: |
+          mkdir -p _site
+          cp index.html crcl.html METHODOLOGY.md README.md _site/
+          cp -R assets data _site/
+      - name: Upload public site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - name: Deploy public site
+        id: deployment
+        uses: actions/deploy-pages@v4
+      - name: Report source failures
+        if: steps.refresh.outcome == 'failure'
+        run: exit 1
