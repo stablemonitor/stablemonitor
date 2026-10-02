@@ -9,6 +9,23 @@ const budgetMoney=n=>finite(n)&&Math.abs(n)>=1e4?Math.abs(n)>=1e6?amount(n):`$${
 const metricRow = (label,value,note) => `<article class="research-metric"><span>${esc(label)}</span><strong>${esc(value)}</strong><p>${esc(note)}</p></article>`;
 
 export function explainDecision(snapshot,positionView,allocation) {
+  if(snapshot.decisionV2) {
+    const l=snapshot,p=l.priceMap || {},d=l.decisionV2;
+    if(allocation?.configured && allocation.needReduceValue>0 && positionView==='held')return {title:'预算超限：复核减仓额度',reason:`按填写的联合压力和权重预算，应减少约 ${budgetMoney(allocation.needReduceValue)}；这是预算测算，不是已连接账户。`};
+    if(l.dataBlockers?.length)return {title:'等待有效估值与数据',reason:l.dataBlockers.slice(0,2).join('；')};
+    if(l.decisionSettings?.eventRisk==='high'||l.decisionSettings?.depeg)return {title:'风险否决：暂停新增',reason:'人工风险开关优先，压力按钮保留该开关。'};
+    if(positionView==='flat') {
+      if(d.exitGate)return {title:'经营风险需复核，暂不新增',reason:d.reasons?.join('；') || '当前经营保护条件未通过。'};
+      if(d.coreGate||d.trialGate)return {title:d.coreGate?'核心分批条件已到':'小仓试探条件已到',reason:allocation?.configured?`规则与预算共同放行上限 ${budgetMoney(allocation.actionableBuyValue)}。单次步速 ${pct(d.trancheFraction)}；不是自动成交。`:'价格和今日其他条件已到；未填账户预算，不生成个人金额。'};
+      if(d.trimGate||d.extremeGate)return {title:'已进入估值减仓区，不追高',reason:'高估可以独立触发，不必等基本面先恶化；未持仓状态不产生卖出订单。'};
+      return {title:'等待试仓价格条件',reason:`当前试仓要求 ${p.trial?.condition || '条件未完整'}。核心分批条件 ${p.core?.condition || '需补'}，不再另加旧70分门槛。`};
+    }
+    if(d.exitGate)return {title:'经营或趋势风险进入退出复核',reason:d.reasons?.join('；') || '复核风险，不是自动全卖指令。'};
+    if(d.extremeGate)return {title:'高溢价进入仓位复核',reason:p.extreme?.condition || '极端价格条件已达到，复核剩余持仓理由。'};
+    if(d.trimGate)return {title:'估值减仓条件已达到',reason:p.trim?.condition || '健康基本面不再阻止独立估值减仓。'};
+    if(d.coreGate||d.trialGate)return {title:d.coreGate?'有条件核心增持':'有条件小仓增持',reason:'先核对账户现金、最大权重及联合压力预算；技术下行会放慢步速。'};
+    return {title:'持仓复核：尚未到减仓条件',reason:`估值减仓条件 ${p.trim?.condition || '需补'}。采用不同定价研究路线会改变中枢；模型分歧一起列示。`};
+  }
   const l=snapshot, failures=(l.checklist?.buy || []).filter(x=>x.pass===false);
   const missing=failures.slice(0,3).map(x=>x.label).join('、');
   const dataProblem=(l.blockers || []).some(x=>!x.includes('暂停新增'));
@@ -34,16 +51,27 @@ export function explainDecision(snapshot,positionView,allocation) {
 
 function renderChecklist(l) {
   const kinds={price:'价格',score:'评分',fundamental:'基本面',trend:'趋势',risk:'风险',data:'数据'};
-  const groups=[['buy','买入条件'],['reduce','减仓条件'],['exit','退出复核']];
+  const groups=l.decisionV2?[['trial','小仓试探'],['core','核心分批'],['trim','估值减仓'],['extreme','高溢价复核'],['exit','经营退出']]:[['buy','买入条件'],['reduce','减仓条件'],['exit','退出复核']];
   $('decision-checklist').innerHTML=groups.map(([key,title])=>{
     const rows=l.checklist?.[key] || [];
     const passed=rows.filter(x=>x.pass===true).length;
-    return `<details class="checklist-group" ${key==='buy'?'open':''}><summary>${title}<span>${passed} / ${rows.length} 条通过</span></summary><div class="checklist-rows">${rows.map(row=>`<div class="checklist-row"><span class="condition-state ${row.pass===true?'pass':row.pass===false?'fail':'unknown'}">${row.pass===true?'已满足':row.pass===false?'未满足':'需补'}</span><div><strong>${esc(row.label)}</strong><small>${esc(kinds[row.kind] || row.kind)} · 当前 ${esc(row.observed ?? '需补')} · 要求 ${esc(row.target ?? '需补')}</small></div></div>`).join('') || '<p class="muted">等待模型给出完整条件。</p>'}</div></details>`;
+    return `<details class="checklist-group" ${['buy','trial','core'].includes(key)?'open':''}><summary>${title}<span>${passed} / ${rows.length} 条通过</span></summary><div class="checklist-rows">${rows.map(row=>`<div class="checklist-row"><span class="condition-state ${row.pass===true?'pass':row.pass===false?'fail':'unknown'}">${row.pass===true?'已满足':row.pass===false?'未满足':'需补'}</span><div><strong>${esc(row.label)}</strong><small>${esc(kinds[row.kind] || row.kind)} · 当前 ${esc(row.observed ?? row.current ?? '需补')} · 要求 ${esc(row.target ?? row.required ?? '需补')}</small></div></div>`).join('') || '<p class="muted">等待模型给出完整条件。</p>'}</div></details>`;
   }).join('');
-  const summary=(l.checklist?.buy || []).filter(row=>row.pass===false);
+  const summary=(l.checklist?.trial || l.checklist?.buy || []).filter(row=>row.pass===false);
   $('gap-summary').textContent=summary.length?`买入还差 ${summary.length} 项：${summary.slice(0,4).map(row=>row.label).join('、')}。价格达到参考线仍须检查其余条件。`:'买入门槛已齐；预算和实际成交条件在下方另外核对。';
 }
 function renderReverse(l) {
+  if(l.valuationV2) {
+    const vals=l.reverseV2 || {},base=l.scenarios?.base?.assumptions || {};
+    const descriptors=[['usdcGrowthStart','首年USDC增长',pct],['rateShift','利率路径偏移',v=>finite(v)?`${num(v*10000,1)}bp`:'需补'],['retentionShiftEnd','第5年留存变化',v=>finite(v)?`${num(v*100,1)}pp`:'需补'],['requiredReturn','DCF股东回报要求',pct]];
+    $('reverse-grid').innerHTML=descriptors.map(([key,label,fmt])=>{const r=vals[key] || {};return `<article class="reverse-card"><p>${label}</p><strong>${fmt(r.value)}</strong><span>当前Base：${fmt(base[key])}</span><small>${esc(r.reason || '等待完整估值路径')}</small></article>`;}).join('');
+    const solved=Object.values(vals).filter(r=>r.achievable&&finite(r.reproducedPrice));
+    $('reverse-proof').textContent=solved.length?`完整五年定价模型单变量代回现价；最大复现误差 ${money(Math.max(...solved.map(r=>Math.abs(r.reproducedPrice-l.price))))}。不是把单一年利润倒推后冒充五年路径。`:'反算条件不足或未求得经济域内解，保留需补。';
+    const m=l.scenarios.base?.methods || {},v=l.valuationV2;
+    $('relative-context').innerHTML=[['五年DCF',money(m.dcf?.price),`终值占经营价值 ${pct(m.dcf?.terminalShare)}；保守现金流视角`],['自身TTM定价参照',money(m.relative?.price),`基准倍数 ${num(m.relative?.multiple,1)}x · ${v.relativeBasis?.count || 0}个已知观察`],['研究中枢',money(l.scenarios.base?.price),'权重明确，两方法共享经营假设，不算两份独立证据']].map(([name,value,note])=>metricRow(name,value,note)).join('');
+    $('relative-proof').textContent=`${v.relativeBasis?.method==='historical_ttm'?'使用当时已披露TTM及已公开重述，拒绝未来财报。':'自身历史不足，采用明确作者倍数假设。'} ${v.confidence?.reasons?.join('；') || ''}。成长退出3/5年只作终值假设诊断，不重复加入中枢权重。`;
+    return;
+  }
   const r=l.reverseValuation || {},s=l.scenarios?.base || {};
   const rows=[
     ['未来经营利润代理',amount(r.requiredEBITDA),amount(s.forwardEBITDA),'只求支撑现价的盈利额，非报告EBITDA或净利'],
@@ -77,7 +105,7 @@ function renderBudget(l,allocation) {
     ['规则放行的新增上限',budgetMoney(a.actionableBuyValue),'行情和预算都通过时才大于0'],
     ['预算可容纳金额',budgetMoney(a.hypotheticalBuyValue),'假设行情条件通过，预算本身的上限'],
     ['需要减少的市值',budgetMoney(a.needReduceValue),'按输入权重和压力预算测算；k为千美元'],
-    ['Bear 压力损失比例',pct(a.lossRate),'情景压力值，实际损失可能更大']
+    ['联合压力损失比例',pct(a.lossRate),'默认用独立联合压力情形，实际损失可能更大']
   ].map(([title,value,note])=>metricRow(title,value,note)).join('')}</div><p class="footnote">${esc(a.reason || '')} 现金余量 ${money(a.cashHeadroom)}；权重余量 ${money(a.weightHeadroom)}；压力损失预算剩余 ${money(a.stressHeadroom)}。${esc((a.warnings || []).join(' '))}</p>`;
 }
 function renderReplay(analysis) {
@@ -121,7 +149,7 @@ export function renderResearch(analysis,settings,state,Model) {
   $('decision-title').textContent=conclusion.title;
   $('decision-reason').textContent=conclusion.reason;
   $('position-context-label').textContent=state.positionView==='held'?'已持仓：复核增减仓条件':'未持仓：识别新增条件';
-  $('history-version-note').textContent=`图中历史使用 ${analysis.historyFormulaVersion || 'v1.0 冻结重建'}；当前决策使用 ${analysis.modelVersion || Model.MODEL_VERSION}。新模型加入现金工资税与可选利率桥接，不能将两个版本的数值差异误读为价格变化。`;
+  $('history-version-note').textContent=`主图是 ${analysis.historyFormulaVersion || 'V2研究重建'}，规则及情景编写于2026-10-02；只用其时可得宏观、财报和股票数据，未宣称当年已运营。旧版V1归档仍保留，改参数不重画本版本历史。`;
   return allocation;
 }
 
@@ -130,7 +158,7 @@ export const portfolioFields=[
   {key:'currentHoldingValue',label:'现有 CRCL 市值',unit:'USD',min:0,max:1e12,step:100,note:'自行填写，不连接券商读取'},
   {key:'availableCash',label:'可用现金',unit:'USD',min:0,max:1e12,step:100,note:'可用于该研究计划的现金'},
   {key:'maxWeight',label:'CRCL 最大账户权重',unit:'%',factor:100,min:0,max:100,step:1,note:'自定风险预算，不等于模型回放60%'},
-  {key:'maxStressLoss',label:'允许 Bear 情景损失',unit:'USD',min:0,max:1e12,step:100,note:'占当前持仓与新增金额的总压力损失预算'}
+  {key:'maxStressLoss',label:'允许联合压力损失',unit:'USD',min:0,max:1e12,step:100,note:'占当前持仓与新增金额的总压力损失预算'}
 ];
 export function buildPortfolioForm() {
   $('portfolio-form').innerHTML=portfolioFields.map(f=>`<div class="setting"><label for="portfolio-${f.key}">${f.label}</label><div class="setting-input"><input id="portfolio-${f.key}" name="${f.key}" type="number" inputmode="decimal" min="${f.min}" max="${f.max}" step="any" aria-describedby="portfolio-note-${f.key}"><span class="unit">${f.unit}</span></div><small id="portfolio-note-${f.key}">${f.note}</small></div>`).join('');

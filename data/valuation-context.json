@@ -1,0 +1,146 @@
+{
+  "schemaVersion": 1,
+  "preparedAt": "2026-10-02",
+  "policy": "只在availableAt后下一交易日使用一级来源；预测路径及可用性比例是研究假设。",
+  "fedSnapshots": [
+    {
+      "availableAt": "2026-06-17",
+      "verified": true,
+      "asOfDate": "2026-06-17",
+      "currentFedMidpoint": 0.03625,
+      "yearEndRates": {
+        "2026": 0.038,
+        "2027": 0.036,
+        "2028": 0.034
+      },
+      "longRunRate": 0.031,
+      "longRunYear": 2030,
+      "sourceUrls": [
+        "https://www.federalreserve.gov/newsevents/pressreleases/monetary20260617a.htm",
+        "https://www.federalreserve.gov/monetarypolicy/fomcprojtabl20260617.htm"
+      ],
+      "notes": [
+        "保留旧SEP供信息时点重建，不在9/16前使用新SEP。",
+        "2029-30到长期利率属于作者插值。"
+      ]
+    },
+    {
+      "availableAt": "2026-09-16",
+      "verified": true,
+      "asOfDate": "2026-09-16",
+      "currentFedMidpoint": 0.03875,
+      "yearEndRates": {
+        "2026": 0.041,
+        "2027": 0.041,
+        "2028": 0.039,
+        "2029": 0.036
+      },
+      "longRunRate": 0.032,
+      "longRunYear": 2031,
+      "sourceUrls": [
+        "https://www.federalreserve.gov/newsevents/pressreleases/monetary20260916a.htm",
+        "https://www.federalreserve.gov/monetarypolicy/fomcprojtabl20260916.htm"
+      ],
+      "notes": [
+        "年末FF路径是委员适当政策判断，不是公司收益率或利率承诺。",
+        "2030-31收敛长期中位数为作者插值假设。"
+      ]
+    }
+  ],
+  "corporateEvents": [
+    {
+      "id": "binance-20260917",
+      "availableAt": "2026-09-22",
+      "effectiveDate": "2026-09-17",
+      "status": "completed",
+      "cashDelta": 100000000,
+      "sharesDelta": 1237011,
+      "verified": true,
+      "sourceUrl": "https://www.sec.gov/Archives/edgar/data/1876042/000187604226000276/crcl-20260917.htm",
+      "notes": [
+        "100M是grossproceeds，未核实发行费用。",
+        "价格80.84/股，已完成股份按公开后下一交易日纳入；已有财报包含后不得再加。"
+      ]
+    },
+    {
+      "id": "tazapay-20260908",
+      "availableAt": "2026-09-08",
+      "status": "pending",
+      "expectedClosingYear": 2027,
+      "assumedClosingDate": "2027-06-30",
+      "stockConsideration": 400000000,
+      "retentionStock": 25000000,
+      "retentionStartMonths": 27,
+      "verified": true,
+      "includeDefault": false,
+      "sourceUrl": "https://www.sec.gov/Archives/edgar/data/1876042/000187604226000267/crcl-20260904.htm",
+      "agreementUrl": "https://www.sec.gov/Archives/edgar/data/1876042/000187604226000267/final-projecttaurusxshar.htm",
+      "notes": [
+        "2027预期交割；6/30是假设日期不是官方承诺。",
+        "以交割前20交易日VWAP换股，股票支付不同时扣400M现金。",
+        "未公开净收入，25B支付量不能直接乘虚构takeRate计收入。",
+        "股份激励约交割27个月后起8季归属；尚未交割不加到当日股数。"
+      ]
+    }
+  ],
+  "capitalInputs": {
+    "availableAt": "2026-08-05",
+    "annualCashCapex": 92400000,
+    "annualDA": 119584000,
+    "sourceUrls": [
+      "https://www.sec.gov/Archives/edgar/data/1876042/000187604226000248/crcl-20260630.htm",
+      "https://s206.q4cdn.com/265218871/files/doc_news/2026/Aug/05/CIRCLE_Q2-2026.pdf"
+    ],
+    "notes": [
+      "D&A29.896M季度×4为税盾代理；EBITDA现金流中不重复加回。",
+      "H1现金软件35.8M及购买长期资产10.4M，合计46.2M×2为92.4M年度现金再投代理，非未来指引。"
+    ],
+    "verified": true,
+    "sourceVerified": true,
+    "annualCashSoftwareCapex": 71600000,
+    "annualCashPPECapex": 20800000
+  },
+  "financialRecasts": {
+    "availableAt": "2026-05-11",
+    "adjustedEBITDANewDefinition": {
+      "2025Q2": 132997000,
+      "2025Q3": 171476000,
+      "2025Q4": 175910000
+    },
+    "notes": "Exclude stock-based-compensation payroll taxes; never use recasts to generate signals before availableAt."
+  },
+  "valuationPolicy": {
+    "relativePeerStatus": "无可核实纯稳定币发行人上市peer组，使用自身历史TTM稀释代理倍数；不声称独立价值证据。",
+    "sotpStatus": "公司单一报告分部；按储备、平台与费用分解PV，不另加未披露Arc或CPN期权值。",
+    "probabilities": null
+  },
+  "discountAnchors": [
+    {
+      "date": "2026-10-01",
+      "availableAt": "2026-10-01",
+      "verified": true,
+      "tenYearTreasury": 0.0524,
+      "sourceUrl": "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/TextView?field_tdr_date_value=2026&type=daily_treasury_yield_curve",
+      "policy": "长债只作资本回报要求的资金成本参照，不用于直接计算储备收入。requiredReturn为作者研究参数，短上市beta不适合伪装精确WACC。"
+    }
+  ],
+  "capitalInputSnapshots": [
+    {
+      "availableAt": "2026-08-05",
+      "annualCashCapex": 92400000,
+      "annualDA": 119584000,
+      "sourceUrls": [
+        "https://www.sec.gov/Archives/edgar/data/1876042/000187604226000248/crcl-20260630.htm",
+        "https://s206.q4cdn.com/265218871/files/doc_news/2026/Aug/05/CIRCLE_Q2-2026.pdf"
+      ],
+      "notes": [
+        "D&A29.896M季度×4为税盾代理；EBITDA现金流中不重复加回。",
+        "H1现金软件35.8M及购买长期资产10.4M，合计46.2M×2为92.4M年度现金再投代理，非未来指引。"
+      ],
+      "verified": true,
+      "sourceVerified": true,
+      "annualCashSoftwareCapex": 71600000,
+      "annualCashPPECapex": 20800000
+    }
+  ]
+}

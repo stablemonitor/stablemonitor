@@ -124,14 +124,14 @@ function renderSummary(snapshot, data, financialError, modelVersion, describe) {
     metric('美元稳定币总量', amount(total), `观测 ${chainDate} · 仅美元锚定币 USD 市值`),
     metric('SOFR / 储备收益率代理', pct(sofr), `观测 ${rateDate} · 校准储备代理 ${pct(f.currentReserveYield)}`),
     metric('最新已公开财报', period, `期末 ${date(f.financialPeriodEnd || financial?.periodEnd)} · 披露 ${financialDate}`),
-    metric('Base 情景估值', money(l.scenarios?.base?.price), `Bear ${money(l.scenarios?.bear?.price)} / Bull ${money(l.scenarios?.bull?.price)} · 默认假设`),
-    metric('分批价格门槛', money(l.positionBands?.buyBelow), `还需评分、基本面、趋势与风险条件全部通过`)
+    metric('Base 多期研究中枢', money(l.scenarios?.base?.price), `Bear ${money(l.scenarios?.bear?.price)} / Bull ${money(l.scenarios?.bull?.price)} · 默认假设`),
+    metric('小仓试探价格条件', money(l.positionBands?.buyBelow), `还需基本面质量、试仓企稳及风险条件通过，不叠加旧70分`)
   ].join('');
   $('home-current-decision').textContent = financialError ? '等待有效数据' : conclusion.title;
   $('home-current-reason').textContent = financialError ? `${financialError}。已读取的行情可查看，财报恢复前暂停当前买卖判断。` : conclusion.reason;
   const blockers = (l.blockers || []).filter(Boolean);
-  const gaps = (l.checklist?.buy || []).filter(row => row.pass !== true).map(row => row.label);
-  $('home-current-proof').textContent = `模型 ${modelVersion || '版本需补'} · ${l.action || '数据不足'}；买入评分 ${finite(l.buyScore) ? num(l.buyScore, 0) + '/100' : '需补'}。${blockers.length ? '数据 / 风险限制：' + blockers.slice(0, 5).join('；') + '。' : '尚未通过的买入条件：' + (gaps.join('、') || '无') + '。'}摘要采用研究台默认参数及未持仓视角；你在研究台修改参数或持仓视角后，结论可能不同。价格门槛不等于自动成交点。`;
+  const gaps = (l.checklist?.trial || l.checklist?.buy || []).filter(row => row.pass !== true).map(row => row.label);
+  $('home-current-proof').textContent = `模型 ${modelVersion || '版本需补'} · ${l.action || '数据不足'}；基本面质量 ${finite(l.buyScore) ? num(l.buyScore, 0) + '/100' : '需补'}。${blockers.length ? '数据 / 风险限制：' + blockers.slice(0, 5).join('；') + '。' : '尚未通过的买入条件：' + (gaps.join('、') || '无') + '。'}摘要采用研究台默认参数及未持仓视角；你在研究台修改参数或持仓视角后，结论可能不同。价格门槛不等于自动成交点。`;
   if (chain && finite(nominal) && nominal > 0 && finite(total) && total > 0) cachedSupply = {date:chainDate, nominal, usdcUSD, total, fetchedAt:data.metadata?.sources?.usdc?.fetchedAt || data.metadata?.generatedAt};
   renderRankingFallback();
 }
@@ -149,7 +149,7 @@ async function start() {
   const results = await Promise.allSettled([
     fetchJSON('./data/market-data.json'),
     fetchJSON('./data/financials.json'),
-    Promise.all([import('./crcl-model.js'), import('./crcl-usable.js')])
+    Promise.all([import('./crcl-research-v2.js'), import('./crcl-usable.js')])
   ]);
   const [marketResult, financialResult, moduleResult] = results;
   if (marketResult.status === 'rejected') throw marketResult.reason;
@@ -160,6 +160,7 @@ async function start() {
   const financialError = financialResult.status === 'rejected' ? financialResult.reason.message : null;
   const data = mergeFinancials(market, financial);
   const [Model, {explainDecision}] = moduleResult.value;
+  data.valuationContext = await fetchJSON('./data/valuation-context.json');
   const normalized = Model.normalizeData(data);
   const today = currentEasternDate();
   const latestDate = normalized.prices.CRCL.filter(row => row.date <= today).at(-1)?.date || today;

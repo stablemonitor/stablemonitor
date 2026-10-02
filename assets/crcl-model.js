@@ -25,10 +25,23 @@ export const DEFAULT_SETTINGS = Object.freeze({
 });
 // The original research baseline is frozen. It was reconstructed from archived
 // observations, not an already-operating live strategy or a historical vendor tape.
-export const HISTORICAL_SETTINGS_V1 = Object.freeze({ ...DEFAULT_SETTINGS,
-  formulaVersion: HISTORICAL_FORMULA_VERSION, annualSBCPayrollTaxOverride: 0,
-  annualRecurringSBCOverride: 0, compensationMode: 'equity', financingDilution: 0,
-  valuationMethod: 'retained-reserve' });
+export const HISTORICAL_SETTINGS_V1 = Object.freeze({
+  scenarios: Object.freeze({
+    bear: Object.freeze({ usdcGrowth: -0.10, yieldShift: -0.012, retentionShift: -0.02, otherGrowth: 0.05, opexGrowth: 0.15, dilution: 0.08, multiple: 14 }),
+    base: Object.freeze({ usdcGrowth: 0.15, yieldShift: -0.006, retentionShift: 0, otherGrowth: 0.20, opexGrowth: 0.10, dilution: 0.04, multiple: 22 }),
+    bull: Object.freeze({ usdcGrowth: 0.35, yieldShift: 0, retentionShift: 0.03, otherGrowth: 0.45, opexGrowth: 0.08, dilution: 0.02, multiple: 30 })
+  }),
+  reserveYieldOverride: null, reserveRetentionOverride: null,
+  annualOpexOverride: null, dilutedSharesOverride: null,
+  annualRecurringOtherRevenueOverride: null, otherContributionMarginOverride: null,
+  corporateNetCashOverride: null, futureCapitalCommitmentsOverride: null,
+  valuationMethod: 'retained-reserve', compensationMode: 'equity',
+  annualSBCPayrollTaxOverride: 0, annualRecurringSBCOverride: 0, financingDilution: 0,
+  opexIncludesSBCPayrollTax: false, eventRisk: 'normal', depeg: false,
+  buyThreshold: 70, sellThreshold: 65, cooldownSessions: 10,
+  initialCash: 100000, maxAllocation: 0.60, trancheFraction: 0.15,
+  slippageBps: 10, feeBps: 5, formulaVersion: HISTORICAL_FORMULA_VERSION
+});
 
 const DAY = 86400000;
 const numeric = n => typeof n === 'number' && Number.isFinite(n);
