@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import * as Research from '../assets/crcl-research-v2.js';
 import {evaluateDecisions} from '../assets/crcl-decisions-v2.js';
+import {explainDecision} from '../assets/crcl-usable.js';
 
 const market=JSON.parse(fs.readFileSync(new URL('../data/market-data.json',import.meta.url)));
 const financial=JSON.parse(fs.readFileSync(new URL('../data/financials.json',import.meta.url)));
@@ -60,6 +61,19 @@ test('Budget defaults to independent severe stress, not narrower normal Bear',()
   assert.equal(plan.stressScenario,'severeStress');
   assert.ok(Math.abs(plan.lossRate-(1-latest.scenarios.severeStress.price/latest.price))<1e-7);
   assert.ok(plan.lossRate>1-latest.scenarios.bear.price/latest.price);
+});
+test('Held depeg exit review remains visible above add veto and budget messages',()=>{
+  const depeg=Research.evaluateSnapshot(data,date,{depeg:true},options);
+  assert.equal(depeg.decisionV2.exitGate,true);
+  assert.match(explainDecision(depeg,'held').title,/退出复核/);
+  assert.match(explainDecision(depeg,'flat').title,/暂停新增/);
+  assert.match(explainDecision(depeg,'held',{configured:true,needReduceValue:10000}).title,/退出复核/);
+  const high=Research.evaluateSnapshot(data,date,{eventRisk:'high'},options);
+  assert.equal(high.decisionV2.exitGate,false);
+  assert.match(explainDecision(high,'held').title,/暂停新增/);
+  const stale=structuredClone(data);stale.metadata.sources.rates.status='cached';
+  const invalid=Research.evaluateSnapshot(stale,date,{depeg:true},options);
+  assert.match(explainDecision(invalid,'held',{configured:true,needReduceValue:10000}).title,/有效估值与数据/);
 });
 test('Changed current research route updates all prices while frozen study history stays identical',()=>{
   const first=Research.analyze(data,{}, {asOf});

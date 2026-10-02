@@ -11,8 +11,9 @@ const metricRow = (label,value,note) => `<article class="research-metric"><span>
 export function explainDecision(snapshot,positionView,allocation) {
   if(snapshot.decisionV2) {
     const l=snapshot,p=l.priceMap || {},d=l.decisionV2;
-    if(allocation?.configured && allocation.needReduceValue>0 && positionView==='held')return {title:'预算超限：复核减仓额度',reason:`按填写的联合压力和权重预算，应减少约 ${budgetMoney(allocation.needReduceValue)}；这是预算测算，不是已连接账户。`};
     if(l.dataBlockers?.length)return {title:'等待有效估值与数据',reason:l.dataBlockers.slice(0,2).join('；')};
+    if(positionView==='held' && d.exitGate)return {title:'经营或趋势风险进入退出复核',reason:d.reasons?.join('；') || '复核风险，不是自动全卖指令。'};
+    if(allocation?.configured && allocation.needReduceValue>0 && positionView==='held')return {title:'预算超限：复核减仓额度',reason:`按填写的联合压力和权重预算，应减少约 ${budgetMoney(allocation.needReduceValue)}；这是预算测算，不是已连接账户。`};
     if(l.decisionSettings?.eventRisk==='high'||l.decisionSettings?.depeg)return {title:'风险否决：暂停新增',reason:'人工风险开关优先，压力按钮保留该开关。'};
     if(positionView==='flat') {
       if(d.exitGate)return {title:'经营风险需复核，暂不新增',reason:d.reasons?.join('；') || '当前经营保护条件未通过。'};
@@ -20,7 +21,6 @@ export function explainDecision(snapshot,positionView,allocation) {
       if(d.trimGate||d.extremeGate)return {title:'已进入估值减仓区，不追高',reason:'高估可以独立触发，不必等基本面先恶化；未持仓状态不产生卖出订单。'};
       return {title:'等待试仓价格条件',reason:`当前试仓要求 ${p.trial?.condition || '条件未完整'}。核心分批条件 ${p.core?.condition || '需补'}，不再另加旧70分门槛。`};
     }
-    if(d.exitGate)return {title:'经营或趋势风险进入退出复核',reason:d.reasons?.join('；') || '复核风险，不是自动全卖指令。'};
     if(d.extremeGate)return {title:'高溢价进入仓位复核',reason:p.extreme?.condition || '极端价格条件已达到，复核剩余持仓理由。'};
     if(d.trimGate)return {title:'估值减仓条件已达到',reason:p.trim?.condition || '健康基本面不再阻止独立估值减仓。'};
     if(d.coreGate||d.trialGate)return {title:d.coreGate?'有条件核心增持':'有条件小仓增持',reason:'先核对账户现金、最大权重及联合压力预算；技术下行会放慢步速。'};
