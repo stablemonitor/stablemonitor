@@ -3,6 +3,7 @@
  * Dollar amounts are USD, share counts are actual counts, rates are decimals.
  * Signals are conditional research candidates, not predictions or instructions.
  */
+import {inspectMarketSources} from './crcl-data-health.js?v=2.1.0';
 export const MODEL_VERSION = '1.1.0-pit';
 export const HISTORICAL_FORMULA_VERSION = '1.0.0-reconstructed';
 export const DEFAULT_SETTINGS = Object.freeze({
@@ -353,20 +354,7 @@ function scoreParts(f, i, price, scenarios) {
 }
 
 function latestSourceIssues(data, asOf) {
-  const issues = [];
-  for (const key of ['CRCL', 'SPY', 'usdc', 'totalStablecoins', 'rates']) {
-    const source = data.metadata?.sources?.[key];
-    if (!record(source)) { issues.push(`缺少${key}来源状态`); continue; }
-    if (source.status !== 'fresh') issues.push(`${key}来源状态${source.status || '缺失'}，仅fresh允许行动`);
-    if (!validDate(source.asOf)) issues.push(`${key}来源asOf日期无效`);
-    if (!validTimestamp(source.fetchedAt)) issues.push(`${key}来源fetchedAt时间无效`);
-    if (validDate(source.asOf) && validTimestamp(source.fetchedAt) && source.asOf > new Date(source.fetchedAt).toISOString().slice(0, 10)) issues.push(`${key}来源日期晚于实际抓取时间`);
-    if (validDate(source.asOf) && (source.asOf > asOf || daysBetween(source.asOf, asOf) > (key === 'rates' ? 10 : ['usdc', 'totalStablecoins'].includes(key) ? 4 : 5))) issues.push(`${key}来源日期超前或超过有效期`);
-    if (validTimestamp(source.fetchedAt) && new Date(source.fetchedAt).toISOString().slice(0, 10) > asOf) issues.push(`${key}抓取时间晚于当前评估日`);
-    const observedAsOf = ['CRCL', 'SPY'].includes(key) ? data.prices[key]?.at(-1)?.date : key === 'rates' ? data.rates.at(-1)?.date : key === 'usdc' ? data.usdc.at(-1)?.date : data.usdc.filter(row => numeric(row.totalStablecoins) && row.totalStablecoins > 0).at(-1)?.date;
-    if (validDate(source.asOf) && source.asOf !== observedAsOf) issues.push(`${key}来源asOf与实际最新观测不一致`);
-  }
-  return issues;
+  return inspectMarketSources(data,asOf).issues;
 }
 
 const displayNumber = (value, digits = 1) => numeric(value) ? value.toFixed(digits) : '缺失';

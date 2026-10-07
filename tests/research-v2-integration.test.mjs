@@ -5,13 +5,34 @@ import * as Research from '../assets/crcl-research-v2.js';
 import {evaluateDecisions} from '../assets/crcl-decisions-v2.js';
 import {explainDecision} from '../assets/crcl-usable.js';
 
-const market=JSON.parse(fs.readFileSync(new URL('../data/market-data.json',import.meta.url)));
-const financial=JSON.parse(fs.readFileSync(new URL('../data/financials.json',import.meta.url)));
-const context=JSON.parse(fs.readFileSync(new URL('../data/valuation-context.json',import.meta.url)));
-const data={...market,financials:financial.financials,shares:financial.shares,valuationContext:context};
-const date=market.prices.CRCL.at(-1).date;
-const asOf=new Date(Date.parse(date+'T00:00:00Z')+86400000).toISOString().slice(0,10);
+// Healthy-behavior tests must not block the refresh that repairs a degraded live cache.
+// This is an actual dated successful collection, never a live cache relabelled as fresh.
+const fixture=JSON.parse(fs.readFileSync(new URL('./fixtures/crcl-v2-healthy-2026-10-02.json',import.meta.url)));
+const expand=(rows,fields)=>rows.map(values=>Object.fromEntries(fields.map((field,index)=>[field,values[index]])));
+const market={...fixture.market,
+  prices:Object.fromEntries(Object.entries(fixture.market.prices).map(([ticker,rows])=>[ticker,expand(rows,fixture.market.tupleFields.prices)])),
+  usdc:expand(fixture.market.usdc,fixture.market.tupleFields.usdc),
+  rates:expand(fixture.market.rates,fixture.market.tupleFields.rates).map(row=>({...row,...fixture.market.rateProvenance}))
+};
+const data={...market,financials:fixture.financials,shares:fixture.shares,financialMetadata:fixture.financialMetadata,valuationContext:fixture.valuationContext};
+const date=fixture.provenance.quoteDate;
+const asOf=fixture.provenance.evaluationAsOf;
 const options={latest:true,asOf,diagnostics:false};
+
+test('Dated healthy reference retains real provenance and the history required by V2',()=>{
+  assert.equal(fixture.provenance.marketCommit,'006e7e0');
+  assert.equal(fixture.provenance.financialAndContextCommit,'014a8c7');
+  assert.equal(market.metadata.generatedAt,fixture.provenance.fetchedAt);
+  assert.equal(market.prices.CRCL.at(-1).date,date);
+  assert.ok(market.prices.CRCL.length>200 && market.prices.SPY.length>200);
+  for(const [key,source] of Object.entries(market.metadata.sources)) {
+    assert.equal(source.status,'fresh');
+    assert.deepEqual({url:source.url,asOf:source.asOf,fetchedAt:source.fetchedAt,status:source.status},fixture.provenance.sources[key]);
+  }
+  const reference=Research.evaluateSnapshot(data,date,{},options);
+  assert.equal(reference.decisionV2.checklist.trial.find(row=>row.id==='data').pass,true);
+  assert.deepEqual(reference.dataBlockers,[]);
+});
 
 test('V2 public entrypoints preserve null and malformed data safety',()=>{
   const empty=Research.evaluateSnapshot(null,date,{},options);
@@ -53,6 +74,20 @@ test('Actual source failures override plausible valuation prices and budgets',()
   assert.equal(result.buyGate,false);assert.ok(result.dataBlockers.length);
   const plan=Research.planAllocation(result,{portfolioValue:100000,currentHoldingValue:0,availableCash:30000,maxWeight:.1,maxStressLoss:2000});
   assert.equal(plan.actionableBuyValue,0);
+});
+test('Cached price sources veto decisions without being promoted by the healthy reference',()=>{
+  const cached=structuredClone(data);
+  for(const ticker of ['CRCL','SPY']) {
+    cached.metadata.sources[ticker].status='cached';
+    cached.metadata.sources[ticker].error=`${ticker} 2026-10-02 close: missing or non-numeric value`;
+  }
+  const result=Research.evaluateSnapshot(cached,date,{},options);
+  assert.equal(result.decisionV2.checklist.trial.find(row=>row.id==='data').pass,false);
+  assert.equal(result.buyGate,false);
+  assert.equal(result.decisionV2.extremeGate,false);
+  assert.ok(result.dataBlockers.some(reason=>reason.includes('cached')));
+  assert.equal(cached.metadata.sources.CRCL.status,'cached');
+  assert.equal(data.metadata.sources.CRCL.status,'fresh');
 });
 test('Budget defaults to independent severe stress, not narrower normal Bear',()=>{
   const latest=Research.evaluateSnapshot(data,date,{},options);

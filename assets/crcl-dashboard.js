@@ -1,5 +1,6 @@
-import * as Model from './crcl-research-v2.js';
-import {renderResearch,buildPortfolioForm,readPortfolioForm,fillPortfolioForm} from './crcl-usable.js';
+import * as Model from './crcl-research-v2.js?v=2.1.0';
+import {renderResearch,buildPortfolioForm,readPortfolioForm,fillPortfolioForm} from './crcl-usable.js?v=2.1.0';
+import {inspectMarketSources,buildEconomicChecks} from './crcl-data-health.js?v=2.1.0';
 
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
@@ -40,8 +41,35 @@ function setStatus(message, error = false) {
   $('loading-status').textContent = message;
   $('loading-status').classList.toggle('error',error);
 }
+const beijingStamp=value=>{
+  const parsed=new Date(value);
+  return value&&Number.isFinite(parsed.getTime())?new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(parsed):'未记录';
+};
+function renderDataHealth() {
+  const l=analysis.latest||{},v=l.valuationV2||{},c=v.current||{},f=l.fundamentals||{},health=inspectMarketSources(data,new Date().toISOString().slice(0,10));
+  const blocked=!!l.dataBlockers?.length;
+  $('data-health-summary').textContent=(blocked?'暂停当前行动 · ':'')+health.passed+'/'+health.total+'个市场来源日期与状态有效。观测日、成功采集与最近尝试分别记录；更新成功不代表经济假设已被验证。'+(blocked&&health.eligible?' 暂停原因：'+l.dataBlockers[0]:'');
+  $('data-health-summary').classList.toggle('warning',blocked);
+  const clocks=[
+    ['价格研究时点',displayDate(l.date),'已结束美股日线，盘中报价不进入本次判断'],
+    ['本次供给 / SOFR输入','USDC '+displayDate(c.usdcAsOf)+'\nSOFR '+displayDate(c.rateAsOf),'为'+displayDate(l.date)+'收盘研究滞后一日取值；来源最新日期另列'],
+    ['财报原始实绩',f.period||'需补','期末 '+displayDate(f.financialPeriodEnd)+' · 披露 '+displayDate(f.financialAvailableAt)],
+    ['宏观 / 资本输入版本','SEP '+displayDate(v.reserveRatePath?.sourceAvailableAt)+'\n资本 '+displayDate(v.capitalBasis?.availableAt),'SEP委员判断与资本年化代理；版本日期不等于每日观测']
+  ];
+  $('input-clock').innerHTML=clocks.map(([label,value,note])=>'<article class="health-clock"><span>'+esc(label)+'</span><strong>'+esc(value)+'</strong><p>'+esc(note)+'</p></article>').join('');
+  $('source-health-table').innerHTML='<table>'+table(['来源','观测日 / 允许滞后','最近成功 · 北京时间','最近尝试 · 北京时间','当前状态'],health.rows.map(row=>[row.label,displayDate(row.asOf)+' / '+row.maximumAgeDays+'自然日',beijingStamp(row.lastSuccessfulAt),beijingStamp(row.attemptedAt),row.stateLabel+(row.error?'；'+row.error:row.issues.length?'；'+row.issues.join('；'):'')]))+'</table>';
+  const checks=buildEconomicChecks(l,data);
+  const checkValue=check=>!finite(check.value)?'需补':check.key==='share'||check.key==='terminal'||check.key==='tax'?pct(check.value,2):check.key==='methods'?number(check.value,2)+'×':check.key==='pv'?money(check.value):dollars(check.value);
+  $('economic-checks').innerHTML=checks.map(check=>'<article class="audit-check"><div><span>'+esc(check.label)+'</span><b class="health-state '+check.status+'">'+esc({pass:'算术核对',assumption:'研究假设',review:'需复核',unknown:'资料不足'}[check.status])+'</b></div><strong>'+esc(checkValue(check))+'</strong><p>'+esc(check.note)+'</p></article>').join('');
+  const financing=(c.includedEvents||[]).filter(event=>event.cashIncluded).reduce((sum,event)=>sum+(event.cashDelta||0),0);
+  $('current-capital-bridge').textContent='本次净现金 '+dollars(c.corporateNetCash)+'：普通公司现金 '+dollars(c.ordinaryCash)+' − 债务 '+dollars(c.corporateDebt)+' − ARC预售 '+dollars(c.arcPresaleCashExcluded)+' ＋ 公司自持USDC '+dollars(c.corporateUSDC)+' × '+pct(c.corporateUSDCUsability,0)+' ＋ 已完成公开融资 '+dollars(financing)+'。客户储备不计公司净现金。'+(settings.corporateNetCashOverride!==null?'当前已启用手动净现金覆盖，上述原始桥用于复核。':'')+' 本次权益代理 '+number(c.currentShares/1e6,3)+'M；原财报加权稀释代理 '+number(f.dilutedShares/1e6,3)+'M，已公开融资新增股数单独纳入，仍不等于精确fully diluted spot股数。';
+  const terms=(data.valuationContext?.commercialTerms||[]).filter(item=>item.verified&&item.availableAt<l.date);
+  $('commercial-terms-note').textContent=terms.length?terms.map(item=>'已知商业条款（'+displayDate(item.availableAt)+'）：'+item.summary).join('；'):'渠道合同费率和未来留存改善仍需人工核验，融资金额不能代替分销费用。';
+}
 function renderDecision() {
   const l = analysis.latest;
+  const dataBlocked=!!l?.dataBlockers?.length;
+  const marketBlocked=!inspectMarketSources(data,new Date().toISOString().slice(0,10)).eligible;
   $('quote-price').textContent = money(l?.price);
   $('quote-date').textContent = `美东交易日 ${displayDate(l?.date)} · 排除未完成日线`;
   $('decision-title').textContent = l?.action || '等待数据';
@@ -58,17 +86,20 @@ function renderDecision() {
     {text:`财报 ${displayDate(l?.fundamentals?.financialPeriodEnd)}`},
     {text:`USDC ${displayDate(l?.fundamentals?.usdcAsOf)}`},
     {text:`利率 ${displayDate(l?.fundamentals?.rateAsOf)}`},
-    ...((l?.blockers || []).map(text => ({text,danger:true})))
+    ...(dataBlocked?[{text:'数据限制 · 详见下方核对',danger:true}]:((l?.blockers || []).map(text=>({text,danger:true}))))
   ];
   $('decision-tags').innerHTML = tags.map(t => `<span class="tag${t.danger ? ' danger' : ''}">${esc(t.text)}</span>`).join('');
-  $('risk-notice').textContent = l?.blockers?.length ? l.blockers.join(' · ') : '新模型不再把“70分＋额外85%折价”同时设为门槛。正常经营情景、联合压力、DCF与市场定价参照分别列示；方法分歧不是收益保证。';
+  $('risk-notice').textContent = dataBlocked?'当前行动已暂停。以下价格和估值仅为截至 '+displayDate(l.date)+(marketBlocked?' 的缓存研究参考。':' 的条件研究参考；估值或经济输入需复核。')+'完整异常见数据核对及条件清单。':l?.blockers?.length?l.blockers.join(' · '):'正常经营情景与联合压力分开。价格条件需与基本面、行情和预算一起核对；两种估值方法的分歧完整列示。';
   $('risk-notice').classList.toggle('warning', !!l?.blockers?.length);
   const s = l?.scenarios || {};
   const b = l?.positionBands || {};
   const names={trial:'小仓试探条件',core:'核心分批条件',trim:'估值减仓条件',extreme:'高溢价复核条件'};
   $('position-bands').innerHTML=['trial','core','trim','extreme'].map(key=>{
     const p=l.priceMap?.[key] || {};
-    return `<article class="level-card ${['trial','core'].includes(key)?'buy':'sell'}"><span class="level-title">${names[key]} · ${p.priceConditionPass?'价格已到':'价格未到'}</span><strong>${money(p.price)}</strong><p>${esc(p.condition || '新估值不足，条件留空')} ${p.nonPricePass?'':`还需：${(p.nonPriceBlockers || []).join('；')}`}</p></article>`;
+    const economicUnavailable=l.knownOperatingLoss&&!finite(p.price);
+    const status=economicUnavailable?'经营风险 · 估值不适用':dataBlocked?(marketBlocked?'缓存参考 · 暂停行动':'条件不足 · 暂停行动'):p.priceConditionPass?'价格已到':'价格未到';
+    const note=economicUnavailable?'所选情景经营亏损，价线留空；先复核费用及薪酬假设。':dataBlocked?'截至 '+displayDate(l.date)+(marketBlocked?'。来源恢复前不作为当前行动线。':'。估值或经济输入不足，详见核对。'):(p.condition||'新估值不足，条件留空')+(p.nonPricePass?'':'；还需：'+(p.nonPriceBlockers||[]).slice(0,2).join('；'));
+    return '<article class="level-card '+(['trial','core'].includes(key)?'buy':'sell')+'"><span class="level-title">'+names[key]+' · '+status+'</span><strong>'+(economicUnavailable?'不适用':money(p.price))+'</strong><p>'+esc(note)+'</p></article>';
   }).join('');
   $('score-components').innerHTML = [['基本面质量（不含价格）',l?.buyComponents,'buy'],['溢价压力（非旧65分门槛）',l?.sellComponents,'sell']].map(([name,components,cls])=>`<div class="component-column ${cls}"><h3>${name}</h3>${components?.length ? components.map(c=>`<div class="component-row"><span>${esc(c.label)}</span><strong>${number(c.value,1)} / ${c.max}</strong><div class="meter ${cls==='sell'?'sell':''}"><i style="width:${Math.max(0,Math.min(100,c.value/c.max*100))}%"></i></div></div>`).join('') : `<p class="muted">${l?.decisionV2?'减仓直接按研究中枢溢价和风险规则判断，无需基本面先恶化。':l?.hardExit?'盈利非正，估值倍数不适用，暂停总分。':'关键数据不足，暂停评分。'}</p>`}</div>`).join('');
 }
@@ -82,11 +113,12 @@ function renderScenarios() {
     const s = cases[key] || {};
     const upside = finite(s.price) && finite(l?.price) ? s.price/l.price-1 : null;
     const unpriced = !finite(s.price);
-    return `<article class="scenario-card ${key}${unpriced?' unpriced':''}"><h3>${labels[key]}</h3><div class="scenario-price">${money(s.price)}</div><p class="scenario-upside">相对收盘 ${pct(upside,1,true)}</p><p>${notes[key]}</p><dl><dt>DCF</dt><dd>${money(s.methods?.dcf?.price)}</dd><dt>相对定价</dt><dd>${money(s.methods?.relative?.price)}</dd><dt>首年平均 USDC</dt><dd>${dollars(s.averageUSDC)}</dd><dt>首年现金经营</dt><dd>${dollars(s.cashEBITDAProxy ?? s.forwardEBITDA)}</dd></dl></article>`;
+    const economicUnavailable=unpriced&&l.knownOperatingLoss;
+    return `<article class="scenario-card ${key}${unpriced?' unpriced':''}"><h3>${labels[key]}</h3><div class="scenario-price">${economicUnavailable?'不适用':money(s.price)}</div><p class="scenario-upside">${economicUnavailable?'所选经营情景亏损，估值留空':'相对收盘 '+pct(upside,1,true)}</p><p>${notes[key]}</p><dl><dt>DCF</dt><dd>${money(s.methods?.dcf?.price)}</dd><dt>相对定价</dt><dd>${money(s.methods?.relative?.price)}</dd><dt>首年平均 USDC</dt><dd>${dollars(s.averageUSDC)}</dd><dt>首年现金经营</dt><dd>${dollars(s.cashEBITDAProxy ?? s.forwardEBITDA)}</dd></dl></article>`;
   }).join('');
   const valuation=l.valuationV2 || {},base=cases.base || {},stress=cases.severeStress || {};
   $('valuation-audit').textContent=`旧一年倍数模型：${money(l.legacyOneYearAudit?.price)}，现在只作审计参照。Base五年DCF ${money(base.methods?.dcf?.price)}、历史TTM定价参照 ${money(base.methods?.relative?.price)}；中枢权重DCF ${pct(1-settings.relativeWeight,0)} / 相对 ${pct(settings.relativeWeight,0)}。联合压力 ${money(stress.price)} 单列，不充当正常Bear。${valuation.confidence?.reasons?.join('；') || ''}`;
-  $('projection-table').innerHTML=table(['年度区间','期末USDC','期间均值','储备yield','留存储备','平台贡献','现金经营','现金税','再投资','企业营运增量','净现金流','权益代理','每股现金流'],(base.years || []).map(y=>[`${y.startDate} → ${y.endDate}`,dollars(y.endUSDC),dollars(y.averageUSDC),pct(y.reserveYield,2),dollars(y.netReserveIncome),dollars(y.otherContribution),dollars(y.cashEBITDAProxy),dollars(y.cashTaxes),dollars(y.cashCapex),dollars(y.deltaNWC),dollars(y.fcff),`${number(y.shares/1e6,1)}M`,money(y.cfPerShare)]));
+  $('projection-table').innerHTML=table(['年度区间','期末USDC','期间均值','储备yield','留存储备','平台贡献','现金经营','现金税','再投资','企业营运增量','现金税率','SBC税基扣除','应税利润代理','净现金流','权益代理','每股现金流'],(base.years || []).map(y=>[`${y.startDate} → ${y.endDate}`,dollars(y.endUSDC),dollars(y.averageUSDC),pct(y.reserveYield,2),dollars(y.netReserveIncome),dollars(y.otherContribution),dollars(y.cashEBITDAProxy),dollars(y.cashTaxes),dollars(y.cashCapex),dollars(y.deltaNWC),pct(y.cashTaxRate,2),dollars(y.eligibleSBCTaxDeduction),dollars(y.taxableIncomeProxy),dollars(y.fcff),`${number(y.shares/1e6,1)}M`,money(y.cfPerShare)]));
   $('pv-bridge').innerHTML=Object.entries(base.methods?.dcf?.pvBridge || {}).filter(([key])=>key!=='limitedLiabilityFloor').map(([key,value])=>`<article class="research-metric"><span>${{reserve:'储备每股现值',platform:'平台每股现值',costs:'现金费用每股现值',taxes:'现金税每股现值',capex:'再投每股现值',nwc:'营运资金每股现值',terminal:'终值每股现值',netCash:'公司净现金每股'}[key] || key}</span><strong>${money(value)}</strong></article>`).join('');
   const metrics = [
     ['首年 USDC 增长假设','assumptions',a => pct(a?.usdcGrowthStart,1,true)],['第5年 USDC 增长','assumptions',a => pct(a?.usdcGrowthEnd,1,true)],['利率路径偏移','assumptions',a => finite(a?.rateShift)?`${number(a.rateShift*10000,0)}bp`:'需补'],['股东回报要求','assumptions',a=>pct(a?.requiredReturn)],
@@ -379,8 +411,13 @@ const fields = [
     "step": "any"
   }
 ];
+fields.push(
+  {key:'initialCashTaxRate',label:'首年现金税率 · 可选',unit:'%',factor:100,min:0,max:50,global:true,note:'留空跟随成熟税率；低税率须有SBC/NOL依据，不把季度退款永久外推',step:'any'},
+  {key:'cashTaxConvergenceYears',label:'现金税率收敛年数',unit:'年',factor:1,min:2,max:5,global:true,note:'从首年税率线性收敛至成熟税率；稳态第6年使用成熟值',step:1},
+  {key:'equitySbcTaxDeductionRatio',label:'权益SBC可抵税比例 · 假设',unit:'%',factor:100,min:0,max:100,global:true,note:'默认0%；只减税基，现金替代不重复减；不是已核实税法扣除额',step:'any'}
+);
 function buildSettings() {
-  const fieldMarkup=f=>`<div class="setting"><label for="input-${f.key}">${f.label}</label><div class="setting-input"><input type="number" id="input-${f.key}" name="${f.key}" min="${f.min}" max="${f.max}" step="any" inputmode="decimal" aria-describedby="note-${f.key}"><span class="unit">${f.unit}</span></div><small id="note-${f.key}">${f.note}</small></div>`;
+  const fieldMarkup=f=>`<div class="setting"><label for="input-${f.key}">${f.label}</label><div class="setting-input"><input type="number" id="input-${f.key}" name="${f.key}" min="${f.min}" max="${f.max}" step="${f.step || 'any'}" inputmode="decimal" aria-describedby="note-${f.key}"><span class="unit">${f.unit}</span></div><small id="note-${f.key}">${f.note}</small></div>`;
   $('settings-form').innerHTML=fields.filter(f=>!f.global).map(fieldMarkup).join('')+'<details class="details advanced-settings"><summary>资本、税与行动门槛：展开高级参数</summary><div class="settings-grid">'+fields.filter(f=>f.global).map(fieldMarkup).join('')+'</div></details>';
   syncSettings();
   $('settings-form').addEventListener('submit', e => e.preventDefault());
@@ -407,7 +444,7 @@ function syncSettings() {
     if (f.global) {
       const fundamentals = analysis?.latest?.fundamentals || {};
       const v=analysis.latest.valuationV2;
-      const automatic={annualOpexOverride:fundamentals.annualAdjustedOpex,annualOtherRevenueOverride:fundamentals.annualRecurringOtherRevenue,currentSharesOverride:v?.current?.currentShares,annualPayrollTaxOverride:4*(fundamentals.sbcPayrollTaxes??fundamentals.SBCPayrollTaxes),annualSBCOverride:4*fundamentals.stockBasedCompensationExpense,annualCashCapexOverride:data.valuationContext?.capitalInputs?.annualCashCapex,relativeMultipleOverride:v?.relativeBasis?.multiples?.base}[f.key];
+      const automatic={initialCashTaxRate:settings.taxRate,annualOpexOverride:fundamentals.annualAdjustedOpex,annualOtherRevenueOverride:fundamentals.annualRecurringOtherRevenue,currentSharesOverride:v?.current?.currentShares,annualPayrollTaxOverride:4*(fundamentals.sbcPayrollTaxes??fundamentals.SBCPayrollTaxes),annualSBCOverride:4*fundamentals.stockBasedCompensationExpense,annualCashCapexOverride:data.valuationContext?.capitalInputs?.annualCashCapex,relativeMultipleOverride:v?.relativeBasis?.multiples?.base}[f.key];
       $(`input-${f.key}`).placeholder = finite(automatic) ? number(automatic*f.factor,2) : '需补';
     }
   }
@@ -418,7 +455,10 @@ function syncSettings() {
   $('opex-includes-payroll').checked = !!settings.opexIncludesSBCPayrollTax;
   $('include-pending-deals').checked=!!settings.includePendingDeals;
   $('input-newGrantDilution').disabled = settings.compensationMode==='cash';
-  $('input-annualSBCOverride').disabled = settings.compensationMode!=='cash';
+  $('input-annualSBCOverride').disabled = settings.compensationMode!=='cash' && !settings.equitySbcTaxDeductionRatio;
+  $('input-equitySbcTaxDeductionRatio').disabled = settings.compensationMode==='cash';
+  $('settings-form').querySelector('label[for="input-annualSBCOverride"]').textContent=settings.compensationMode==='cash'?'当前年现金替代SBC支出':'当前年权益SBC税基代理';
+  $('note-annualSBCOverride').textContent=settings.compensationMode==='cash'?'现金替代模式扣经营费用，取消同份新增权益稀释；不重复扣税基。':'仅按所选比例扣税基，不扣同份现金经营费用；额外可抵税部分减少现金税，不是已核实税额。';
   $('input-annualPayrollTaxOverride').disabled = !!settings.opexIncludesSBCPayrollTax;
 }
 function renderSensitivity() {
@@ -433,19 +473,20 @@ function renderSensitivity() {
 }
 
 function renderIndicators() {
-  const l = analysis.latest || {}, i = l.indicators || {}, f = l.fundamentals || {}, s = l.scenarios || {};
+  const l = analysis.latest || {}, i = l.indicators || {}, f = l.fundamentals || {}, s = l.scenarios || {}, c=l.valuationV2?.current || {};
   const rows = [
-    ['USDC 当前规模',dollars(f.currentUSDC),'期末观察值；估值进一步假设未来平均规模'],
+    ['USDC 估值起点 · 观测',dollars(c.currentUSDC),'模型使用 '+displayDate(c.usdcAsOf)+' 名义余额；未来平均规模另作假设'],
     ['USDC · 7 / 30 日',`${pct(i.usdc7d,1,true)} / ${pct(i.usdc30d,1,true)}`,'按期初规模计算净变化，缺失留空'],
     ['USDC · 90 日',pct(i.usdc90d,1,true),'绝对增长与竞争份额共同观察'],
     ['USDC 市占 / 90 日变化',`${pct(i.marketShare)} / ${finite(i.marketShare90d)?`${number(i.marketShare90d*100,2)}pp`:'需补'}`,'美元稳定币全市场口径'],
-    ['当前储备收益率',pct(f.currentReserveYield,2),'实际储备收益率按短端利率变化校准'],
+    ['当前储备收益率 · 代理',pct(c.reserveYield,2),'报告yield与同季SOFR校准，加入 '+displayDate(c.rateAsOf)+' 短端利率；非实时储备实测'],
     ['储备收入留存',pct(f.reserveRetention,2),'储备收入扣分销交易成本后的留存'],
     ['RLDC 利润率',pct(f.rldcMargin,2),'全部收入扣全部相关成本，不等于储备留存'],
     ['渠道分销成本占比',pct(f.distributionRatio,2),'全部分销及交易成本，不全部归因 Coinbase'],
     ['经常性其他收入 · 假设',dollars(settings.annualOtherRevenueOverride ?? f.annualRecurringOtherRevenue),'历史全年指引中点代理；未单列真实经常性金额'],
     ['年调整后经营费用 · 假设',dollars(settings.annualOpexOverride ?? f.annualAdjustedOpex),'已知全年指引中点；未来增长另行假设'],
-    ['稀释股数代理',finite(f.dilutedShares)?`${number(f.dilutedShares/1e6,1)}M`:'需补',`已披露代理；截至 ${displayDate(f.shareAsOf)}`],
+    ['本次模型权益代理',finite(c.currentShares)?number(c.currentShares/1e6,3)+'M':'需补','原财报 '+number(f.dilutedShares/1e6,3)+'M，加已公开融资；仍非精确fully diluted股数'],
+    ['本次企业净现金',dollars(c.corporateNetCash),'含公司自持USDC可用性折扣与完成融资；客户储备和ARC排除，详情见数据核对'],
     ['Base 估值安全边际',pct(finite(s.base?.price) && s.base.price>0 ? 1-l.price/s.base.price : null,1,true),'1 − 当前价格 / Base 情景价值'],
     ['RSI · Wilder 14',number(i.rsi14,1),'低于 30 常见超卖；不单独决定买入'],
     ['MA60 / MA200',`${money(i.ma60)} / ${money(i.ma200)}`,'趋势参考；不足窗口留空'],
@@ -475,20 +516,23 @@ function renderBacktest() {
   $('trades-table').innerHTML = table(['信号收盘日','执行开盘日','动作','执行价','股数','手续费','剩余现金'], trades.length ? trades.map(t => [t.signalDate,t.date,t.side === 'buy' ? '买入' : '卖出',money(t.price),number(t.quantity,2),money(t.fee),money(t.cash)]) : [['尚无执行记录','—','—','—','—','—','—']]);
 }
 function renderSources() {
+  renderDataHealth();
+  const sourceHealth=new Map(inspectMarketSources(data,new Date().toISOString().slice(0,10)).rows.map(row=>[row.key,row]));
   const sources = data.metadata?.sources || {};
   const titles = {prices:'日线价格 · Yahoo Finance',CRCL:'CRCL 日线 · Yahoo Finance',SPY:'SPY 日线 · Yahoo Finance',usdc:'USDC · DefiLlama',totalStablecoins:'美元稳定币总量 · DefiLlama',rates:'短端利率 · 纽约联储 SOFR',financials:'季度财报 · Circle / SEC'};
   const items = Object.entries(sources).map(([key,source]) => {
     const url = /^https:\/\//.test(source.url || '') ? source.url : null;
     const status = source.status || '需补';
-    const ok = ['ok','verified','fresh'].includes(status);
-    const statusLabel={fresh:'已更新',verified:'原文核实',cached:'缓存 · 更新失败',failed:'更新失败',ok:'已更新'}[status] || status;
+    const effective=sourceHealth.get(key);
+    const ok=effective?effective.eligible:['ok','verified','fresh'].includes(status);
+    const statusLabel=effective?effective.stateLabel:{fresh:'已更新',verified:'原文核实',cached:'缓存 · 更新失败',failed:'更新失败',ok:'已更新'}[status] || status;
     return `<div class="source-item"><div><strong>${url ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(titles[key] || key)} ↗</a>` : esc(titles[key] || key)}</strong><p>数据截至 ${displayDate(source.asOf)} · 采集 ${displayDate(source.fetchedAt || data.metadata?.generatedAt)}</p>${source.error ? `<p>${esc(source.error)}</p>` : ''}</div><span class="source-state${ok ? '' : ' warn'}">${esc(statusLabel)}</span></div>`;
   });
   const f = analysis.latest?.fundamentals || {};
   if (f.sourceUrl && /^https:\/\//.test(f.sourceUrl)) items.push(`<div class="source-item"><div><strong><a href="${esc(f.sourceUrl)}" target="_blank" rel="noopener noreferrer">模型使用的财报原文 ↗</a></strong><p>季度结束 ${displayDate(f.financialPeriodEnd)} · 发布 ${displayDate(f.financialAvailableAt)}</p></div><span class="source-state">一级来源</span></div>`);
   items.push('<div class="source-item"><div><strong><a href="data/financials.json">财报快照与人工核录说明 ↗</a></strong><p>季度发布后需要按原文核录；每日自动任务只刷新市场数据。</p></div><span class="source-state">可复核</span></div>');
   $('source-list').innerHTML = items.join('');
-  $('limitations').innerHTML = `<p>${esc((analysis.limitations || []).join(' · '))}</p><details class="details"><summary>展开模型假设与需补事项</summary><ul>${[...(analysis.latest?.warnings || []),...(data.financialMetadata?.criticalGaps || [])].map(note=>`<li>${esc(note)}</li>`).join('')}</ul></details>`;
+  $('limitations').innerHTML = `<p>${esc((analysis.limitations || []).join(' · '))}</p><details class="details"><summary>展开模型假设与需补事项</summary><ul>${[...(analysis.latest?.warnings || []),...(data.financialMetadata?.criticalGaps || []).map(note=>note.includes('默认估值现金不纳入')?'财报原始净现金代理未纳入公司自持USDC；当前V2按所选可用性折扣纳入，净现金桥见数据核对。':note)].map(note=>`<li>${esc(note)}</li>`).join('')}</ul></details>`;
   $('model-version').textContent = `模型 v${Model.MODEL_VERSION || '1.0'} · 生成 ${displayDate(data.metadata?.generatedAt)}`;
 }
 
@@ -514,11 +558,11 @@ function renderCharts() {
   for (const score of [false,true]) {
     const host = $(score ? 'score-chart' : 'price-chart');
     const W = Math.max(320,Math.round(host.clientWidth)), H = score ? (W < 600 ? 125 : 145) : (W < 600 ? 265 : 355);
-    const P = {l:W < 600 ? 39 : 52,r:13,t:18,b:28}, plotW = W-P.l-P.r, plotH = H-P.t-P.b;
+    const P = {l:W < 600 ? 39 : 52,r:score?13:W<600?95:120,t:18,b:28}, plotW = W-P.l-P.r, plotH = H-P.t-P.b;
     const x = index => P.l+index/Math.max(1,all.length-1)*plotW;
     let min = 0,max = 100;
     if (!score) {
-      const values = all.flatMap(p => [p.price,p.bearPrice,p.bullPrice]).filter(finite);
+      const values = all.flatMap(p => [p.price,p.bearPrice,p.bullPrice]).concat(Object.values(analysis.latest?.priceMap||{}).map(point=>point?.price)).filter(finite);
       min = Math.max(0,Math.min(...values)*.85);
       max = Math.max(...values)*1.10;
       if (min === max) max += 1;
@@ -553,6 +597,18 @@ function renderCharts() {
         const symbol = p.marker.type === 'exit' ? `<path d="M${px-4},${py-4}L${px+4},${py+4}M${px+4},${py-4}L${px-4},${py+4}" stroke="${color}" stroke-width="2"/>` : `<path d="M${px},${py+(buy?-5:5)}L${px-4},${py+(buy?3:-3)}L${px+4},${py+(buy?3:-3)}Z" fill="${color}"/>`;
         markup += `<g><title>${esc(`${p.date} ${p.marker.label || p.action} · ${money(p.price)}`)}</title>${symbol}</g>`;
       });
+    }
+    if(!score) {
+      const points=Object.entries(analysis.latest?.priceMap||{}).filter(([key,point])=>['trial','core','trim','extreme'].includes(key)&&finite(point.price)).map(([key,point])=>({key,point,actualY:y(point.price),labelY:y(point.price)})).sort((a,b)=>a.actualY-b.actualY);
+      for(let i=0;i<points.length;i++)points[i].labelY=Math.max(P.t+8,points[i].actualY,i?points[i-1].labelY+18:P.t+8);
+      const overflow=points.length?Math.max(0,points.at(-1).labelY-(H-P.b-8)):0;
+      const labelNames={trial:'试探',core:'核心',trim:'减仓',extreme:'复核'};
+      for(const item of points) {
+        item.labelY-=overflow;
+        const color=['trial','core'].includes(item.key)?'#66c39a':'#f0848c',edge=W-P.r;
+        markup+='<g class="current-level-marker" data-level="'+item.key+'" data-price="'+item.point.price+'" opacity="'+(analysis.latest?.dataBlockers?.length ? 0.5 : 1)+'"><title>'+esc('当前假设条件：'+labelNames[item.key]+' '+money(item.point.price)+'；截至'+analysis.latest.date+(analysis.latest?.dataBlockers?.length?'，条件参考，暂停行动':''))+'</title><line x1="'+(edge-7)+'" x2="'+(edge+5)+'" y1="'+item.actualY+'" y2="'+item.actualY+'" stroke="'+color+'" stroke-width="2"/><path d="M'+(edge+5)+','+item.actualY+'L'+(edge+11)+','+item.labelY+'" stroke="'+color+'" fill="none"/><text x="'+(edge+14)+'" y="'+(item.labelY+3)+'" fill="'+color+'" font-size="10">'+labelNames[item.key]+' '+money(item.point.price)+'</text></g>';
+      }
+      $('chart-current-levels').textContent=points.length?'右端四个短标记仅表示当前假设的价格条件，日期 '+displayDate(analysis.latest.date)+(analysis.latest?.dataBlockers?.length?'，条件参考，当前行动暂停。':'；其余基本面、行情和预算条件另行核对。')+' 修改参数会更新短标记，历史曲线和候选时点保持固定研究基线。':'当前正常研究中枢不适用，右端价线留空；历史曲线仅供固定基线对照，查看情景及条件清单原因。';
     }
     markup += `<line class="cursor-line" x1="0" x2="0" y1="${P.t}" y2="${H-P.b}" stroke="#aab8c9" stroke-dasharray="3,3" visibility="hidden"/><rect class="chart-hit" x="${P.l}" y="${P.t}" width="${plotW}" height="${plotH}" fill="transparent"/>`;
     host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true">${markup}</svg>`;
@@ -590,7 +646,8 @@ function recalculate() {
   analysis = {...analysis,settings,latest:Model.evaluateSnapshot(data,analysis.latest.date,settings,{latest:true,asOf:new Date().toISOString().slice(0,10)})};
   renderDecision();renderScenarios();renderIndicators();renderBacktest();renderSources();syncSettings();
   renderResearch(analysis,settings,researchState,Model);
-  // Current assumptions never alter the historical baseline chart or backtest.
+  // Refresh current-condition markers; the historical data and replay stay frozen.
+  renderCharts();
 }
 
 async function start() {
@@ -711,7 +768,8 @@ $('save-settings').addEventListener('click',()=>{
   catch{$('settings-feedback').textContent='浏览器无法保存参数，可使用“导出当前研究快照”。';}
 });
 $('export-research').addEventListener('click',()=>{
-  const report={version:Model.MODEL_VERSION,exportedAt:new Date().toISOString(),priceAsOf:analysis.latest.date,sourceMetadata:data.metadata,settings,portfolio:researchState.portfolio,portfolioIsDemo:researchState.demo,decision:{rule:analysis.latest.action,positionView:researchState.positionView,scenarios:analysis.latest.scenarios,checklist:analysis.latest.checklist,reverseValuation:analysis.latest.reverseValuation},historyFormulaVersion:analysis.historyFormulaVersion};
+  const l=analysis.latest;
+  const report={version:Model.MODEL_VERSION,exportedAt:new Date().toISOString(),priceAsOf:l.date,evaluationAsOf:l.valuationV2?.current?.dataValidationAsOf,sourceMetadata:data.metadata,financialMetadata:data.financialMetadata,valuationContext:data.valuationContext,sourceHealth:inspectMarketSources(data,new Date().toISOString().slice(0,10)),economicChecks:buildEconomicChecks(l,data),settings,portfolio:researchState.portfolio,portfolioIsDemo:researchState.demo,decision:{rule:l.action,positionView:researchState.positionView,scenarios:l.scenarios,checklist:l.checklist,priceMap:l.priceMap,reverseV2:l.reverseV2,dataBlockers:l.dataBlockers,knownOperatingLoss:l.knownOperatingLoss,warnings:l.warnings},valuationInputs:l.valuationV2?.current,valuationBasis:{reserveRatePath:l.valuationV2?.reserveRatePath,capitalBasis:l.valuationV2?.capitalBasis,relativeBasis:l.valuationV2?.relativeBasis},valuationFundamentals:l.fundamentals,observedIndicators:l.indicators,historyFormulaVersion:analysis.historyFormulaVersion};
   const url=URL.createObjectURL(new Blob([JSON.stringify(report,null,2)],{type:'application/json'})),a=document.createElement('a');
   a.href=url;a.download=`CRCL-研究快照-${displayDate(analysis.latest.date)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 });

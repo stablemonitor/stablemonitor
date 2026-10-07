@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import * as filesystem from 'node:fs/promises';
 import path from 'node:path';
+import {MARKET_SOURCE_MAX_AGE_DAYS} from '../assets/crcl-data-health.js';
 
 export const SOURCE_KEYS = Object.freeze(['CRCL', 'SPY', 'usdc', 'totalStablecoins', 'rates']);
 const DAY = 86400000;
@@ -9,7 +10,7 @@ const AUTHORITIES = {
   usdc: 'third_party_onchain_aggregation', totalStablecoins: 'third_party_onchain_aggregation',
   rates: 'official_primary_NYFed'
 };
-const MAX_AGE_DAYS = Object.freeze({ CRCL: 5, SPY: 5, usdc: 4, totalStablecoins: 4, rates: 7 });
+const MAX_AGE_DAYS = MARKET_SOURCE_MAX_AGE_DAYS;
 const MINIMUM_ROWS = Object.freeze({ CRCL: 30, SPY: 200, usdc: 120, totalStablecoins: 120, rates: 30 });
 
 // Number(null), Number('') and Number(false) would invent observations.

@@ -264,6 +264,41 @@ test('Offline refresh marks caches degraded without erasing data; bad first-run 
   } finally { await fs.rm(directory, { recursive: true, force: true }); }
 });
 
+test('A failed collection is persisted as cached and the next complete collection recovers fresh', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'stablemonitor-recovery-'));
+  try {
+    const target = path.join(directory, 'snapshot.json'), original = freshSnapshot();
+    await fs.writeFile(target, JSON.stringify(original));
+    const failedAt = new Date('2026-10-02T22:00:00Z');
+    const incomplete = fixtures('2026-10-02');
+    incomplete.CRCL.chart.result[0].indicators.quote[0].close[incomplete.CRCL.chart.result[0].timestamp.length - 1] = null;
+    incomplete.SPY.chart.result[0].indicators.quote[0].close[incomplete.SPY.chart.result[0].timestamp.length - 1] = null;
+    const responseFor = raw => async url => {
+      const key = url.includes('/chart/CRCL') ? 'CRCL' : url.includes('/chart/SPY') ? 'SPY' : url.includes('stablecoin=2') ? 'usdc' : url.includes('stablecoincharts') ? 'totalStablecoins' : 'rates';
+      return { ok: true, json: async () => structuredClone(raw[key]) };
+    };
+    const failed = await refreshData({ target, now: failedAt, fetchImpl: responseFor(incomplete), sleep: async () => {}, jitter: () => 0 });
+    assert.equal(failed.metadata.status, 'degraded');
+    assert.equal(failed.metadata.sources.CRCL.status, 'cached');
+    assert.equal(failed.metadata.sources.SPY.status, 'cached');
+    assert.equal(failed.metadata.sources.CRCL.cacheFetchedAt, NOW.toISOString());
+    assert.deepEqual(failed.prices.CRCL, original.prices.CRCL);
+    assert.equal(JSON.parse(await fs.readFile(target, 'utf8')).metadata.sources.CRCL.status, 'cached');
+    // Monday morning also makes Friday's official SOFR publication available.
+    const recoveredAt = new Date('2026-10-05T13:00:00Z');
+    const recovered = await refreshData({ target, now: recoveredAt, fetchImpl: responseFor(fixtures('2026-10-02')), sleep: async () => {}, jitter: () => 0 });
+    assert.equal(recovered.metadata.status, 'fresh');
+    assert.equal(recovered.metadata.degraded, false);
+    for (const source of Object.values(recovered.metadata.sources)) {
+      assert.equal(source.status, 'fresh'); assert.equal(source.error, null);
+      assert.equal(source.cacheFetchedAt, recoveredAt.toISOString());
+    }
+    assert.equal(recovered.prices.CRCL.at(-1).date, '2026-10-02');
+    assert.ok(recovered.prices.CRCL.some(row => row.date === original.prices.CRCL[0].date));
+    assert.equal(JSON.parse(await fs.readFile(target, 'utf8')).metadata.status, 'fresh');
+  } finally { await fs.rm(directory, { recursive: true, force: true }); }
+});
+
 test('Corrupt existing JSON is preserved and rejected before any source fetch', async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'stablemonitor-corrupt-'));
   try {

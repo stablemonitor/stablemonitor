@@ -12,7 +12,7 @@ export function explainDecision(snapshot,positionView,allocation) {
   if(snapshot.decisionV2) {
     const l=snapshot,p=l.priceMap || {},d=l.decisionV2;
     if(l.dataBlockers?.length)return {title:'等待有效估值与数据',reason:l.dataBlockers.slice(0,2).join('；')};
-    if(positionView==='held' && d.exitGate)return {title:'经营或趋势风险进入退出复核',reason:d.reasons?.join('；') || '复核风险，不是自动全卖指令。'};
+    if(positionView==='held' && d.exitGate)return {title:'经营或趋势风险进入退出复核',reason:l.knownOperatingLoss?'所选费用与薪酬情景下首年经营盈利非正；复核假设和持仓，估值不可用时价线留空，不是已核实公司实亏或自动全卖指令。':d.reasons?.join('；') || '复核风险，不是自动全卖指令。'};
     if(allocation?.configured && allocation.needReduceValue>0 && positionView==='held')return {title:'预算超限：复核减仓额度',reason:`按填写的联合压力和权重预算，应减少约 ${budgetMoney(allocation.needReduceValue)}；这是预算测算，不是已连接账户。`};
     if(l.decisionSettings?.eventRisk==='high'||l.decisionSettings?.depeg)return {title:'风险否决：暂停新增',reason:'人工风险开关优先，压力按钮保留该开关。'};
     if(positionView==='flat') {
@@ -70,6 +70,8 @@ function renderReverse(l) {
     const m=l.scenarios.base?.methods || {},v=l.valuationV2;
     $('relative-context').innerHTML=[['五年DCF',money(m.dcf?.price),`终值占经营价值 ${pct(m.dcf?.terminalShare)}；保守现金流视角`],['自身TTM定价参照',money(m.relative?.price),`基准倍数 ${num(m.relative?.multiple,1)}x · ${v.relativeBasis?.count || 0}个已知观察`],['研究中枢',money(l.scenarios.base?.price),'权重明确，两方法共享经营假设，不算两份独立证据']].map(([name,value,note])=>metricRow(name,value,note)).join('');
     $('relative-proof').textContent=`${v.relativeBasis?.method==='historical_ttm'?'使用当时已披露TTM及已公开重述，拒绝未来财报。':'自身历史不足，采用明确作者倍数假设。'} ${v.confidence?.reasons?.join('；') || ''}。成长退出3/5年只作终值假设诊断，不重复加入中枢权重。`;
+    const b=v.relativeBasis||{};
+    $('relative-proof').textContent+=' 工资税口径桥：TTM披露Adjusted EBITDA '+amount(b.latestTTMDisclosedAdjustedEBITDA)+'，已披露SBC工资税 '+amount(b.ttmPayrollTax)+'，回扣后现金口径参照 '+amount(b.latestTTMCashBridge)+'。'+(b.ttmPayrollCoverage?.complete?'四个季度均有当时可得披露；该桥只作可比性诊断，没有自动抬高定价倍数。':'存在缺失或未到可用时点的季度，现金口径桥留空；不以最新季度×4填补历史。');
     return;
   }
   const r=l.reverseValuation || {},s=l.scenarios?.base || {};

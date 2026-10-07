@@ -312,3 +312,134 @@ test('Historical V1 is a separate literal with no dependency on current or V2 de
   assert.equal(V2_DEFAULTS.scenarios.base.rateShift, 0);
   assert.equal(Object.isFrozen(HISTORICAL_SETTINGS_V1.scenarios.base), true);
 });
+
+test('New optional tax defaults reproduce the prior 2.0 fixture prices exactly', () => {
+  const model = build(fixture());
+  const prior = { bear: 43.16780591782729, base: 69.22067767715058, bull: 107.4961940095543, severeStress: 7.292287716243793 };
+  for (const [key, price] of Object.entries(prior)) assert.equal(model.cases[key].price, price);
+  const explicit = build(fixture(), { taxRate: 0.21, initialCashTaxRate: 0.21, cashTaxConvergenceYears: 5, equitySbcTaxDeductionRatio: 0 });
+  for (const key of Object.keys(prior)) {
+    assert.equal(explicit.cases[key].price, model.cases[key].price);
+    assert.ok(model.cases[key].years.every(row => row.cashTaxRate === 0.21 && row.eligibleSBCTaxDeduction === 0));
+  }
+  assert.equal(V2_DEFAULTS.initialCashTaxRate, null);
+  assert.equal(V2_DEFAULTS.equitySbcTaxDeductionRatio, 0);
+});
+test('Cash tax path follows the initial rate and converges by the chosen integer year while the terminal is mature', () => {
+  const f = fixture(), model = build(f, { initialCashTaxRate: 0.10, cashTaxConvergenceYears: 5 });
+  const rates = model.cases.base.years.map(row => row.cashTaxRate);
+  [0.10, 0.1275, 0.155, 0.1825, 0.21].forEach((rate, index) => closeEnough(rates[index], rate, 1e-12));
+  assert.equal(model.cases.base.methods.dcf.terminalYear6.cashTaxRate, 0.21);
+  const fast = build(f, { initialCashTaxRate: 0, cashTaxConvergenceYears: 2 });
+  assert.deepEqual(fast.cases.base.years.map(row => row.cashTaxRate), [0, 0.21, 0.21, 0.21, 0.21]);
+  const mature30 = build(f, { taxRate: 0.30, initialCashTaxRate: null });
+  assert.ok(mature30.cases.base.years.every(row => row.cashTaxRate === 0.30));
+  assert.equal(mature30.cases.base.methods.dcf.terminalYear6.cashTaxRate, 0.30);
+});
+test('Tax controls reject strings, booleans, invalid ratios and noninteger convergence years without coercion', () => {
+  const invalid = [
+    { initialCashTaxRate: '0.10' }, { initialCashTaxRate: undefined }, { initialCashTaxRate: false }, { initialCashTaxRate: -0.1 }, { initialCashTaxRate: 1.1 },
+    { cashTaxConvergenceYears: '5' }, { cashTaxConvergenceYears: null }, { cashTaxConvergenceYears: 1 }, { cashTaxConvergenceYears: 6 }, { cashTaxConvergenceYears: 3.5 },
+    { equitySbcTaxDeductionRatio: '0.5' }, { equitySbcTaxDeductionRatio: null }, { equitySbcTaxDeductionRatio: true }, { equitySbcTaxDeductionRatio: -0.1 }, { equitySbcTaxDeductionRatio: 1.1 },
+    { taxRate: '0.21' }, { taxRate: null }, { taxRate: NaN }, { taxRate: Infinity }
+  ];
+  for (const settings of invalid) {
+    const model = build(fixture(), settings);
+    assert.equal(model.cases.base.price, null, JSON.stringify(settings));
+    assert.equal(model.confidence.level, 'insufficient');
+    assert.match(model.dataBlockers.join(' '), /现金税率/);
+  }
+});
+test('Optional equity SBC tax deduction changes only cash tax and CF, not EBITDA, shares or market multiples', () => {
+  const f = fixture(), baseline = build(f), shield = build(f, { equitySbcTaxDeductionRatio: 0.5 });
+  for (let index = 0; index < 5; index++) {
+    const original = baseline.cases.base.years[index], altered = shield.cases.base.years[index];
+    closeEnough(altered.annualEquitySBCBasis, 200000000 * 1.06 ** (index + 1), 0.0001);
+    closeEnough(altered.eligibleSBCTaxDeduction, altered.annualEquitySBCBasis * 0.5, 0.0001);
+    assert.equal(altered.cashEBITDAProxy, original.cashEBITDAProxy);
+    assert.equal(altered.shares, original.shares);
+    closeEnough(altered.taxableIncomeProxy, Math.max(altered.cashEBITDAProxy - altered.annualDA - altered.eligibleSBCTaxDeduction, 0), 0.0001);
+    closeEnough(altered.fcff - original.fcff, original.cashTaxes - altered.cashTaxes, 0.0001);
+  }
+  assert.deepEqual(shield.relativeBasis.multiples, baseline.relativeBasis.multiples);
+  assert.equal(shield.cases.base.methods.relative.price, baseline.cases.base.methods.relative.price);
+  assert.ok(shield.cases.base.methods.dcf.price > baseline.cases.base.methods.dcf.price);
+  const sixth = shield.cases.base.methods.dcf.terminalYear6, fifth = shield.cases.base.years[4];
+  assert.equal(sixth.annualEquitySBCBasis, fifth.annualEquitySBCBasis * 1.025);
+  assert.notEqual(sixth.annualEquitySBCBasis, fifth.annualEquitySBCBasis * 1.06);
+  assert.equal(sixth.cashTaxRate, 0.21);
+});
+test('Cash replacement cannot deduct the same SBC again even with ratio one enabled', () => {
+  const f = fixture(), disabled = build(f, { compensationMode: 'cash', equitySbcTaxDeductionRatio: 0 }), enabled = build(f, { compensationMode: 'cash', equitySbcTaxDeductionRatio: 1 });
+  for (const key of ['bear', 'base', 'bull', 'severeStress']) {
+    assert.equal(enabled.cases[key].price, disabled.cases[key].price);
+    assert.equal(enabled.cases[key].methods.relative.price, disabled.cases[key].methods.relative.price);
+    for (const row of enabled.cases[key].years) {
+      assert.equal(row.eligibleSBCTaxDeduction, 0);
+      assert.equal(row.annualEquitySBCBasis, 0);
+      assert.ok(row.annualCashSBC > 0);
+    }
+  }
+  assert.equal(enabled.cases.base.methods.dcf.terminalYear6.eligibleSBCTaxDeduction, 0);
+  assert.equal(enabled.cases.base.methods.dcf.terminalYear6.annualEquitySBCBasis, 0);
+});
+test('Disabled equity tax shield does not require a missing SBC fact or invent a zero basis', () => {
+  const f = fixture(), baseline = build(f);
+  delete f.data.financials.at(-1).stockBasedCompensationExpense;
+  const disabled = build(f, { equitySbcTaxDeductionRatio: 0 });
+  assert.equal(disabled.cases.base.price, baseline.cases.base.price);
+  assert.equal(disabled.cases.base.years[0].annualEquitySBCBasis, null);
+  assert.equal(disabled.cases.base.years[0].eligibleSBCTaxDeduction, 0);
+  const missing = build(f, { equitySbcTaxDeductionRatio: 0.5 });
+  assert.equal(missing.cases.base.price, null);
+  assert.match(missing.cases.base.warnings.join(' '), /缺少已核验P&L基数/);
+  const explicit = build(f, { equitySbcTaxDeductionRatio: 0.5, annualSBCOverride: 200000000 });
+  assert.ok(explicit.cases.base.price > disabled.cases.base.price);
+  assert.match(explicit.cases.base.years[0].equitySBCBasisSource, /假设/);
+});
+test('Losses create no negative cash tax, refunds or fictional NOL assets', () => {
+  const model = build(fixture(), { initialCashTaxRate: 0.05, equitySbcTaxDeductionRatio: 1 });
+  for (const scenario of Object.values(model.cases)) for (const row of scenario.years) {
+    assert.ok(row.taxableIncomeProxy >= 0);
+    assert.ok(row.cashTaxes >= 0);
+    if (row.cashEBITDAProxy < 0) assert.equal(row.cashTaxes, 0);
+    assert.equal(Object.hasOwn(row, 'nolBalance'), false);
+    assert.equal(Object.hasOwn(row, 'deferredTaxAsset'), false);
+  }
+  assert.equal(model.cases.severeStress.methods.dcf.terminalYear6.cashTaxes, 0);
+});
+test('Payroll TTM bridge is source dated and only a diagnostic, never a new multiple denominator', () => {
+  const f = fixture(), original = summarizeRelativeBasis(f.data, f.context, {}, '2026-10-01');
+  f.context.payrollTaxSnapshots = [
+    { period: '2025Q3', amount: 5015000, availableAt: '2026-02-25', verified: true, sourceUrl: 'https://example.test/q4' },
+    { period: '2025Q4', amount: 8428000, availableAt: '2026-02-25', verified: true, sourceUrl: 'https://example.test/q4' },
+    { period: '2026Q1', amount: 10588000, availableAt: '2026-05-11', verified: true, sourceUrl: 'https://example.test/q1' },
+    { period: '2026Q2', amount: 7637000, availableAt: '2026-08-05', verified: true, sourceUrl: 'https://example.test/q2' }
+  ];
+  const basis = summarizeRelativeBasis(f.data, f.context, {}, '2026-10-01');
+  assert.equal(basis.ttmPayrollTax, 31668000);
+  assert.equal(basis.latestTTMCashBridge, basis.latestTTMDisclosedAdjustedEBITDA - 31668000);
+  assert.equal(basis.ttmPayrollCoverage.complete, true);
+  assert.equal(basis.ttmPayrollCoverage.cashBridgeComparable, true);
+  assert.deepEqual(basis.multiples, original.multiples);
+  assert.deepEqual(basis.observations.map(row => row.multiple), original.observations.map(row => row.multiple));
+  const earlier = summarizeRelativeBasis(f.data, f.context, {}, '2026-08-05');
+  assert.equal(earlier.latestTTMCashBridge, null);
+  assert.ok(earlier.ttmPayrollCoverage.missingQuarters.includes('2025Q2'));
+  const incomplete = structuredClone(f); incomplete.context.payrollTaxSnapshots[0].verified = false;
+  const failed = summarizeRelativeBasis(incomplete.data, incomplete.context, {}, '2026-10-01');
+  assert.equal(failed.latestTTMCashBridge, null);
+  assert.ok(failed.ttmPayrollCoverage.missingQuarters.includes('2025Q3'));
+  assert.deepEqual(failed.multiples, basis.multiples);
+  const future = structuredClone(f); future.context.payrollTaxSnapshots.push({ ...future.context.payrollTaxSnapshots[0], availableAt: '2027-01-01', amount: 999999999 });
+  assert.equal(summarizeRelativeBasis(future.data, future.context, {}, '2026-10-01').latestTTMCashBridge, basis.latestTTMCashBridge);
+  future.context.financialRecasts.availableAt = '2027-01-01';
+  const oldDefinition = summarizeRelativeBasis(future.data, future.context, {}, '2026-10-01');
+  assert.equal(oldDefinition.latestTTMCashBridge, null);
+  assert.match(oldDefinition.cashBridgeReason, /定义未确认/);
+});
+test('Corporate USDC research liquidity warning reflects the selected percentage', () => {
+  const model = build(fixture(), { corporateUSDCUsability: 0.375 });
+  assert.ok(model.warnings.some(warning => warning.includes('可用性37.5%')));
+  assert.ok(!model.warnings.some(warning => warning.includes('可用性80%')));
+});

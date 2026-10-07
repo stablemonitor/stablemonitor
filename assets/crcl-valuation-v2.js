@@ -3,9 +3,9 @@
  * claim allocation and a separately labelled historical market benchmark.
  * Every monetary input is USD, rates/growth are decimals, shares are counts.
  */
-import { normalizeData, evaluateSnapshot } from './crcl-model.js';
+import { normalizeData, evaluateSnapshot } from './crcl-model.js?v=2.1.0';
 
-export const VALUATION_V2_VERSION = '2.0.0-research';
+export const VALUATION_V2_VERSION = '2.1.0-research';
 const freeze = value => { if (value && typeof value === 'object') { Object.values(value).forEach(freeze); Object.freeze(value); } return value; };
 export const V2_DEFAULTS = freeze({
   scenarios: {
@@ -14,7 +14,9 @@ export const V2_DEFAULTS = freeze({
     bull: { usdcGrowthStart: 0.35, usdcGrowthEnd: 0.20, rateShift: 0.0025, retentionShiftEnd: 0.03, otherGrowthStart: 0.35, otherGrowthEnd: 0.20, opexGrowth: 0.06, compensationGrowth: 0.06, newGrantDilution: 0.01, requiredReturn: 0.11, terminalGrowth: 0.03, capexGrowth: 0.08 },
     severeStress: { usdcGrowthStart: -0.25, usdcGrowthEnd: 0, rateShift: -0.015, retentionShiftEnd: -0.06, otherGrowthStart: 0, otherGrowthEnd: 0, opexGrowth: 0.06, compensationGrowth: 0.06, newGrantDilution: 0.02, requiredReturn: 0.16, terminalGrowth: 0.005, capexGrowth: 0.02 }
   },
-  relativeWeight: 0.5, corporateUSDCUsability: 0.8, taxRate: 0.21, nwcRate: 0.03,
+  relativeWeight: 0.5, corporateUSDCUsability: 0.8, taxRate: 0.21,
+  initialCashTaxRate: null, cashTaxConvergenceYears: 5, equitySbcTaxDeductionRatio: 0,
+  nwcRate: 0.03,
   costElasticity: 0.15, opexScaleReferenceGrowth: 0.25, compensationMode: 'equity',
   includePendingDeals: false, opexIncludesSBCPayrollTax: false,
   currentSharesOverride: null, currentUSDCOverride: null, annualOpexOverride: null,
@@ -47,6 +49,22 @@ function settingsWith(overrides = {}) {
   const settings = { ...V2_DEFAULTS, ...overrides, scenarios: {} };
   for (const key of ['bear', 'base', 'bull', 'severeStress']) settings.scenarios[key] = { ...V2_DEFAULTS.scenarios[key], ...(object(overrides.scenarios?.[key]) ? overrides.scenarios[key] : {}) };
   return settings;
+}
+function taxConfiguration(settings) {
+  const { taxRate, initialCashTaxRate, cashTaxConvergenceYears, equitySbcTaxDeductionRatio } = settings;
+  if (!number(taxRate) || taxRate < 0 || taxRate > 1 || (initialCashTaxRate !== null && (!number(initialCashTaxRate) || initialCashTaxRate < 0 || initialCashTaxRate > 1)) || !Number.isInteger(cashTaxConvergenceYears) || cashTaxConvergenceYears < 2 || cashTaxConvergenceYears > 5 || !number(equitySbcTaxDeductionRatio) || equitySbcTaxDeductionRatio < 0 || equitySbcTaxDeductionRatio > 1) return { valid: false, reason: '现金税率须为0–1有限数值或初期null；收敛年数须为2–5整数，SBC扣除比例须为0–1数值' };
+  return { valid: true, mature: taxRate, initial: initialCashTaxRate === null ? taxRate : initialCashTaxRate, years: cashTaxConvergenceYears, ratio: equitySbcTaxDeductionRatio };
+}
+function cashTaxFor(cashEBITDAProxy, annualDA, annualEquitySBCBasis, year, settings, terminal = false) {
+  const configuration = taxConfiguration(settings);
+  if (!configuration.valid) return configuration;
+  const eligibleSBCTaxDeduction = settings.compensationMode === 'cash' || configuration.ratio === 0 ? 0 : number(annualEquitySBCBasis) && annualEquitySBCBasis >= 0 ? annualEquitySBCBasis * configuration.ratio : null;
+  if (eligibleSBCTaxDeduction === null) return { valid: false, reason: '权益SBC税敏感性缺少已核验P&L基数或明确年度假设，不补造税盾' };
+  const cashTaxRate = terminal ? configuration.mature : configuration.initial + (configuration.mature - configuration.initial) * clamp((year - 1) / (configuration.years - 1), 0, 1);
+  const taxableIncomeProxy = Math.max(cashEBITDAProxy - annualDA - eligibleSBCTaxDeduction, 0);
+  const cashTaxes = taxableIncomeProxy * cashTaxRate;
+  if (![cashTaxRate, taxableIncomeProxy, cashTaxes, eligibleSBCTaxDeduction].every(number)) return { valid: false, reason: '现金税敏感性计算超出有限范围' };
+  return { valid: true, cashTaxRate, eligibleSBCTaxDeduction, taxableIncomeProxy, cashTaxes };
 }
 function addYears(date, count) {
   const origin = new Date(`${date}T00:00:00Z`), year = origin.getUTCFullYear() + count, month = origin.getUTCMonth();
@@ -132,6 +150,29 @@ function quantile(values, fraction) {
 }
 function quarterKey(date) { return Number(date.slice(0, 4)) * 4 + Math.floor((Number(date.slice(5, 7)) - 1) / 3); }
 
+function ttmPayrollDiagnostic(latest, context) {
+  const periods = Array.isArray(latest?.quarters) ? latest.quarters : [];
+  const snapshots = Array.isArray(context?.payrollTaxSnapshots) ? context.payrollTaxSnapshots : [];
+  const quarters = periods.map(period => {
+    // Select by public date before checking validity: a known-but-unverified
+    // revision must not be silently replaced with a supposedly verified number.
+    const candidate = snapshots.filter(row => object(row) && row.period === period && validDate(row.availableAt) && row.availableAt < latest.date).sort((a, b) => a.availableAt.localeCompare(b.availableAt)).at(-1);
+    const verified = candidate && candidate.verified === true && candidate.sourceVerified !== false && validSourceUrls([candidate.sourceUrl]) && number(candidate.amount) && candidate.amount >= 0;
+    return { period, amount: verified ? candidate.amount : null, availableAt: candidate?.availableAt || null, sourceUrl: candidate?.sourceUrl || null, verified: Boolean(verified), reason: verified ? null : candidate ? '金额或来源未完成核验' : '无当时已公开且直接核验的季度工资税源' };
+  });
+  const missingQuarters = quarters.filter(row => !row.verified).map(row => row.period);
+  const complete = periods.length === 4 && missingQuarters.length === 0;
+  const definitionMissingQuarters = (latest?.profitComponents || []).filter(row => row.payrollTaxExcluded !== true).map(row => row.period);
+  const cashBridgeComparable = Array.isArray(latest?.profitComponents) && latest.profitComponents.length === 4 && definitionMissingQuarters.length === 0;
+  const ttmPayrollTax = complete ? quarters.reduce((sum, row) => sum + row.amount, 0) : null;
+  const disclosed = number(latest?.ttmAdjustedEBITDA) ? latest.ttmAdjustedEBITDA : null;
+  const bridge = complete && cashBridgeComparable && disclosed !== null ? disclosed - ttmPayrollTax : null;
+  return { latestTTMDisclosedAdjustedEBITDA: disclosed, latestTTMCashBridge: bridge, ttmPayrollTax,
+    ttmPayrollCoverage: { quarters, periods, missingQuarters, complete, cashBridgeComparable, definitionMissingQuarters },
+    cashBridgePolicy: '仅从已公开新定义Adjusted EBITDA回扣核验的SBC现金工资税；不是GAAP/FCFE，不替换历史倍数分母、不自动抬估值',
+    cashBridgeReason: periods.length !== 4 ? '缺少四季披露Adjusted EBITDA' : !complete ? '工资税源覆盖不全，桥接留空' : !cashBridgeComparable ? '部分季度定义未确认剔除工资税，不再重复扣回' : null };
+}
+
 /** Own historical TTM multiple is market context, not an independent peer valuation. */
 export function summarizeRelativeBasis(rawData, context = {}, settingsInput = {}, asOf = new Date().toISOString().slice(0, 10)) {
   const data = normalizeData(rawData), settings = settingsWith(settingsInput), observations = [];
@@ -143,6 +184,9 @@ export function summarizeRelativeBasis(rawData, context = {}, settingsInput = {}
     if (four.length !== 4 || four.some((row, index) => index && quarterKey(row.periodEnd) - quarterKey(four[index - 1].periodEnd) !== 1)) continue;
     const useRecast = object(recast) && validDate(recast.availableAt) && recast.availableAt < bar.date;
     const profits = four.map(row => useRecast && number(recast.adjustedEBITDANewDefinition?.[row.period]) ? recast.adjustedEBITDANewDefinition[row.period] : row.adjustedEBITDA);
+    const profitComponents = four.map((row, index) => ({ period: row.period || row.periodEnd, adjustedEBITDA: profits[index],
+      payrollTaxExcluded: row.adjustedEBITDAExcludesSBCPayrollTax === true || (useRecast && (number(recast.adjustedEBITDANewDefinition?.[row.period]) || (row.periodEnd >= '2026-01-01' && row.availableAt >= recast.availableAt))),
+      definition: useRecast && number(recast.adjustedEBITDANewDefinition?.[row.period]) ? '当时已公开新定义recast' : '季度原始披露' }));
     if (!profits.every(number)) continue;
     const ttmAdjustedEBITDA = profits.reduce((sum, value) => sum + value, 0); if (ttmAdjustedEBITDA <= 0) continue;
     const financial = four.at(-1), share = latestShares(data.shares, bar.date);
@@ -151,13 +195,13 @@ export function summarizeRelativeBasis(rawData, context = {}, settingsInput = {}
     const enterpriseValue = bar.close * balance.currentShares - balance.corporateNetCash;
     const multiple = enterpriseValue / ttmAdjustedEBITDA;
     if (!number(multiple) || multiple <= 0) continue;
-    observations.push({ date: bar.date, multiple, ttmAdjustedEBITDA, enterpriseValue, currentShares: balance.currentShares, corporateNetCash: balance.corporateNetCash, financialAvailableAt: financial.availableAt, quarters: four.map(row => row.period || row.periodEnd), definition: useRecast ? '当日已公开新定义recasts+原始新口径季度' : '当日已公开原始定义季度；可能与新定义不可完全比' });
+    observations.push({ date: bar.date, multiple, ttmAdjustedEBITDA, enterpriseValue, currentShares: balance.currentShares, corporateNetCash: balance.corporateNetCash, financialAvailableAt: financial.availableAt, quarters: four.map(row => row.period || row.periodEnd), profitComponents, definition: useRecast ? '当日已公开新定义recasts+原始新口径季度' : '当日已公开原始定义季度；可能与新定义不可完全比' });
   }
   const latest = observations.at(-1), enough = observations.length >= 20 && latest?.quarters.length === 4;
   const multiples = enough ? { bear: quantile(observations.map(row => row.multiple), 0.25), base: quantile(observations.map(row => row.multiple), 0.50), bull: quantile(observations.map(row => row.multiple), 0.75) } : { bear: 24, base: 30, bull: 36 };
   const method = settings.relativeMultipleOverride !== null ? 'user_override' : enough ? 'historical_ttm' : 'author_fallback';
   if (settings.relativeMultipleOverride !== null) for (const key of Object.keys(multiples)) multiples[key] = settings.relativeMultipleOverride;
-  return { method, count: observations.length, quarters: latest?.quarters.length || 0, asOf: latest?.date || null, sourceFirstDate: observations[0]?.date || null, multiples, observations, latestTTMAdjustedEBITDA: latest?.ttmAdjustedEBITDA ?? null, currentObservationMultiple: latest?.multiple ?? null, cashPolicy: { corporateUSDCUsability: settings.corporateUSDCUsability, customerReserveCashIncluded: 0 }, warnings: [enough ? '使用自身截至当日历史TTM倍数25/50/75分位，IPO后短样本存在市场情绪和利率混杂。' : '不足20个日期和4个连续已公开季度，24/30/36仅为作者倍数假设。', '无可核实纯发行人上市peer组；自身历史市场定价不是独立内在价值证明。', '每个历史日期仅使用当时已公开财报、股本代理、余额及recasts；并非当时供应商完整历史版本。'] };
+  return { method, count: observations.length, quarters: latest?.quarters.length || 0, asOf: latest?.date || null, sourceFirstDate: observations[0]?.date || null, multiples, observations, latestTTMAdjustedEBITDA: latest?.ttmAdjustedEBITDA ?? null, ...ttmPayrollDiagnostic(latest, context), currentObservationMultiple: latest?.multiple ?? null, cashPolicy: { corporateUSDCUsability: settings.corporateUSDCUsability, customerReserveCashIncluded: 0 }, warnings: [enough ? '使用自身截至当日历史TTM倍数25/50/75分位，IPO后短样本存在市场情绪和利率混杂。' : '不足20个日期和4个连续已公开季度，24/30/36仅为作者倍数假设。', '无可核实纯发行人上市peer组；自身历史市场定价不是独立内在价值证明。', '每个历史日期仅使用当时已公开财报、股本代理、余额及recasts；并非当时供应商完整历史版本。'] };
 }
 
 function pendingShareSchedule(context, asOf, price, settings) {
@@ -196,6 +240,9 @@ function projectYears(current, financial, capital, ratePath, assumption, setting
   if (!Object.values(assumption).every(number) || assumption.usdcGrowthStart < -1 || assumption.usdcGrowthEnd < -1 || assumption.otherGrowthStart < -1 || assumption.otherGrowthEnd < -1 || assumption.opexGrowth <= -1 || assumption.compensationGrowth <= -1 || assumption.capexGrowth <= -1 || assumption.newGrantDilution < 0 || assumption.requiredReturn <= 0 || assumption.requiredReturn > 1 || assumption.terminalGrowth <= -1) return { valid: false, years: [], reason: '情景参数超出经济边界' };
   const years = []; let usdc = current.currentUSDC, other = inputs.annualOtherRevenue, opex = inputs.annualOpex, shares = current.currentShares;
   let payroll = inputs.payroll, cashSBC = inputs.cashSBC, capex = inputs.capex, da = inputs.da;
+  const reportedSBCVerified = financial.verified === true && financial.sourceVerified !== false && validSourceUrls([financial.sourceUrl]) && number(financial.stockBasedCompensationExpense) && financial.stockBasedCompensationExpense >= 0;
+  let annualEquitySBCBasis = settings.compensationMode === 'cash' ? 0 : settings.annualSBCOverride !== null ? number(settings.annualSBCOverride) && settings.annualSBCOverride >= 0 ? settings.annualSBCOverride : null : reportedSBCVerified ? financial.stockBasedCompensationExpense * 4 : null;
+  const equitySBCBasisSource = settings.compensationMode === 'cash' ? '现金替代已在EBI扣同份SBC，关闭额外权益税盾' : settings.annualSBCOverride !== null ? '明确年度P&L SBC研究假设' : reportedSBCVerified ? '已核验季度P&L SBC×4的年化研究代理' : 'P&L SBC基数未核验；比例0时不参与估值';
   let priorRLDC = usdc * current.reserveYield * inputs.retention + other * inputs.contributionMargin;
   for (let year = 1; year <= 5; year++) {
     const calendar = ratePath.years[year - 1], growth = linearGrowth(assumption.usdcGrowthStart, assumption.usdcGrowthEnd, year), otherGrowth = linearGrowth(assumption.otherGrowthStart, assumption.otherGrowthEnd, year);
@@ -206,9 +253,13 @@ function projectYears(current, financial, capital, ratePath, assumption, setting
     const otherContribution = other * inputs.contributionMargin;
     const effectiveOpexGrowth = Math.max(-0.95, assumption.opexGrowth + settings.costElasticity * (growth - settings.opexScaleReferenceGrowth));
     opex *= 1 + effectiveOpexGrowth; payroll *= 1 + assumption.compensationGrowth; cashSBC *= 1 + assumption.compensationGrowth;
+    if (number(annualEquitySBCBasis)) annualEquitySBCBasis *= 1 + assumption.compensationGrowth;
     capex *= 1 + assumption.capexGrowth; da *= 1 + assumption.capexGrowth;
     const cashEBITDAProxy = netReserveIncome + otherContribution - opex - payroll - cashSBC;
-    const rldcProxy = netReserveIncome + otherContribution, cashTaxes = Math.max(cashEBITDAProxy - da, 0) * settings.taxRate;
+    const rldcProxy = netReserveIncome + otherContribution;
+    const tax = cashTaxFor(cashEBITDAProxy, da, annualEquitySBCBasis, year, settings);
+    if (!tax.valid) return { valid: false, years: [], reason: tax.reason };
+    const { cashTaxes, cashTaxRate, eligibleSBCTaxDeduction, taxableIncomeProxy } = tax;
     const deltaNWC = (rldcProxy - priorRLDC) * settings.nwcRate;
     const fcff = cashEBITDAProxy - cashTaxes - capex - deltaNWC;
     const netNewGrantDilution = settings.compensationMode === 'cash' ? 0 : assumption.newGrantDilution;
@@ -217,7 +268,7 @@ function projectYears(current, financial, capital, ratePath, assumption, setting
     shares = shares * (1 + netNewGrantDilution) + pendingShares;
     const discountFactor = (1 + assumption.requiredReturn) ** year;
     if (![endUSDC, averageUSDC, netReserveIncome, otherContribution, opex, payroll, cashSBC, capex, da, cashTaxes, deltaNWC, cashEBITDAProxy, fcff, shares, discountFactor].every(number) || shares <= 0) return { valid: false, years: [], reason: '现金流或股数计算超出有限范围' };
-    years.push({ ...calendar, startYield: clamp(calendar.startYield + assumption.rateShift, 0, 0.25), endYield: clamp(calendar.endYield + assumption.rateShift, 0, 0.25), year, startUSDC, endUSDC, averageUSDC, usdcGrowth: growth, reserveYield, reserveRetention, netReserveIncome, annualRecurringOtherRevenue: other, otherContribution, otherContributionMargin: inputs.contributionMargin, annualAdjustedOpex: opex, effectiveOpexGrowth, annualPayrollTax: payroll, annualCashSBC: cashSBC, cashEBITDAProxy, rldcProxy, cashTaxes, annualDA: da, cashCapex: capex, deltaNWC, fcff, shares, netNewGrantDilution, pendingShares, pendingEvents, cfPerShare: fcff / shares, discountFactor });
+    years.push({ ...calendar, startYield: clamp(calendar.startYield + assumption.rateShift, 0, 0.25), endYield: clamp(calendar.endYield + assumption.rateShift, 0, 0.25), year, startUSDC, endUSDC, averageUSDC, usdcGrowth: growth, reserveYield, reserveRetention, netReserveIncome, annualRecurringOtherRevenue: other, otherContribution, otherContributionMargin: inputs.contributionMargin, annualAdjustedOpex: opex, effectiveOpexGrowth, annualPayrollTax: payroll, annualCashSBC: cashSBC, annualEquitySBCBasis, equitySBCBasisSource, cashEBITDAProxy, rldcProxy, cashTaxes, cashTaxRate, eligibleSBCTaxDeduction, taxableIncomeProxy, annualDA: da, cashCapex: capex, deltaNWC, fcff, shares, netNewGrantDilution, pendingShares, pendingEvents, cfPerShare: fcff / shares, discountFactor });
     usdc = endUSDC; priorRLDC = rldcProxy;
   }
   return { valid: true, years, inputs };
@@ -227,6 +278,8 @@ function projectYears(current, financial, capital, ratePath, assumption, setting
 export function calculateDCF(years, assumption, current, settings = {}, allowRunoff = false) {
   if (!object(assumption) || !object(settings) || !Array.isArray(years) || years.length !== 5 || years.some(row => !object(row) || !number(row.cfPerShare) || !number(row.discountFactor) || row.discountFactor <= 0) || !number(current?.currentShares) || current.currentShares <= 0 || !number(current?.corporateNetCash)) return { price: null, valid: false, reason: '完整五年现金流或当前股本/公司净现金不足' };
   settings = { ...V2_DEFAULTS, ...settings };
+  const configuration = taxConfiguration(settings);
+  if (!configuration.valid) return { price: null, valid: false, reason: configuration.reason };
   const stableDilution = settings.compensationMode === 'cash' ? 0 : assumption.newGrantDilution;
   const perShareGrowth = (1 + assumption.terminalGrowth) / (1 + stableDilution) - 1;
   if (assumption.requiredReturn <= perShareGrowth) return { price: null, valid: false, reason: '要求回报率必须高于扣稳态稀释后的每股终值增长率' };
@@ -240,14 +293,17 @@ export function calculateDCF(years, assumption, current, settings = {}, allowRun
   const cashCapex = fifth.cashCapex * (1 + terminalGrowth), annualDA = fifth.annualDA * (1 + terminalGrowth);
   const netReserveIncome = averageUSDC * reserveYield * fifth.reserveRetention, rldcProxy = netReserveIncome + otherContribution;
   const cashEBITDAProxy = rldcProxy - annualAdjustedOpex - annualPayrollTax - annualCashSBC;
-  const cashTaxes = Math.max(cashEBITDAProxy - annualDA, 0) * settings.taxRate;
+  const annualEquitySBCBasis = settings.compensationMode === 'cash' ? 0 : number(fifth.annualEquitySBCBasis) ? fifth.annualEquitySBCBasis * (1 + terminalGrowth) : null;
+  const tax = cashTaxFor(cashEBITDAProxy, annualDA, annualEquitySBCBasis, 6, settings, true);
+  if (!tax.valid) return { price: null, valid: false, reason: tax.reason };
+  const { cashTaxes, cashTaxRate, eligibleSBCTaxDeduction, taxableIncomeProxy } = tax;
   const deltaNWC = (rldcProxy - fifth.rldcProxy) * settings.nwcRate, fcff = cashEBITDAProxy - cashTaxes - cashCapex - deltaNWC;
   const shares = fifth.shares * (1 + stableDilution), terminalCFPerShare = fcff / shares;
   if (![averageUSDC, reserveYield, netReserveIncome, rldcProxy, cashEBITDAProxy, cashTaxes, cashCapex, annualDA, deltaNWC, fcff, shares, terminalCFPerShare].every(number) || shares <= 0) return { price: null, valid: false, reason: '终态第六年现金流、长期利率或股数输入不足/无效' };
   const startDate = fifth.endDate, endDate = addYears(startDate, 1);
   const terminalYear6 = { year: 6, startDate, endDate, normalizedPeriodDays: 365, calendarDays: (time(endDate) - time(startDate)) / DAY,
     startUSDC, endUSDC, averageUSDC, reserveYield, reserveRetention: fifth.reserveRetention, netReserveIncome, annualRecurringOtherRevenue, otherContribution,
-    annualAdjustedOpex, annualPayrollTax, annualCashSBC, cashEBITDAProxy, rldcProxy, annualDA, cashTaxes, cashCapex, deltaNWC, fcff, shares, cfPerShare: terminalCFPerShare,
+    annualAdjustedOpex, annualPayrollTax, annualCashSBC, annualEquitySBCBasis, equitySBCBasisSource: fifth.equitySBCBasisSource || null, cashEBITDAProxy, rldcProxy, annualDA, cashTaxes, cashTaxRate, eligibleSBCTaxDeduction, taxableIncomeProxy, cashCapex, deltaNWC, fcff, shares, cfPerShare: terminalCFPerShare,
     role: '期末余额与长期利率重新建模的365日稳态代表年；非把第五年平均余额/收益率永久延长' };
   if (terminalCFPerShare <= 0 && !allowRunoff) return { price: null, valid: false, reason: '末期现金流非正，正常Gordon终值不适用' };
   const terminalValue = terminalCFPerShare > 0 ? terminalCFPerShare / (assumption.requiredReturn - perShareGrowth) : 0;
@@ -285,6 +341,8 @@ export function buildValuationV2(rawData, context = {}, settingsInput = {}, opti
   const dataValidationAsOf = options.dataAsOf || today;
   const empty = reason => ({ version: VALUATION_V2_VERSION, asOf: validDate(asOf) ? asOf : null, current: {}, cases: Object.fromEntries(['bear', 'base', 'bull', 'severeStress'].map(key => [key, { price: null, methods: {}, years: [], warnings: [reason] }])), consensusBand: { low: null, mid: null, high: null }, dataBlockers: [reason], confidence: { level: 'insufficient', reasons: [reason] }, warnings: [reason], settings });
   if (!validDate(asOf)) return empty('评估日期格式无效');
+  const taxConfig = taxConfiguration(settings);
+  if (!taxConfig.valid) return empty(taxConfig.reason);
   const fast = object(options.fundamentals) && object(options.relativeBasis);
   const data = fast ? rawData : normalizeData(rawData);
   if (!object(data) || !object(data.prices) || !Array.isArray(data.prices.CRCL)) return empty('股票/财报数据格式无效');
@@ -328,6 +386,8 @@ export function buildValuationV2(rawData, context = {}, settingsInput = {}, opti
     else if (number(dcf.price) && number(relativePrice)) price = dcf.price * (1 - settings.relativeWeight) + relativePrice * settings.relativeWeight;
     const disagreement = number(dcf.price) && number(relativePrice) && Math.min(dcf.price, relativePrice) > 0 ? Math.max(dcf.price, relativePrice) / Math.min(dcf.price, relativePrice) - 1 : null;
     const warnings = [...dcf.warnings || [], '渠道留存逐步变化、USDC增长、费用弹性和未来净授予稀释均为研究假设，未承诺概率。', '工资税/SBC现金替代按薪酬增长；现金模式不再扣同一未来净授予稀释，已有股本代理不逆向取消。', '其他收入锚为经常性代理，未额外加入Arc、CPN或并购未披露期权/收入。', '年度D&A税盾随再投代理增长，未取得完整资产折旧摊销计划；现金替代仅覆盖P&L SBC，资本化奖励额外现金成本尚未单独建模。'];
+    if (taxConfig.initial !== taxConfig.mature) warnings.push('初期有效现金税率向成熟税率收敛是研究敏感性；未核实NOL余额，不建立退款或累计递延税资产。');
+    if (taxConfig.ratio > 0) warnings.push(settings.compensationMode === 'cash' ? '现金替代模式已经在利润扣除同份SBC，额外权益SBC税盾强制关闭。' : '权益SBC可扣比例为研究假设；0–1是模型输入范围而非法律扣除上限，不代表已核实归属/行权扣除额。');
     if (pending.length) warnings.push('未交割交易仅做股票稀释压力：按现价作为未来VWAP代理、27个月后RSU分8季归属；不扣同额现金，未知新增经营现金流未估值，不能当完整交易损益结论。');
     if (key === 'severeStress') warnings.push('stressNonGoingConcern为联合存续压力诊断：主价DCF/runoff；不是最低股价或最大亏损保证，短期正利润不证明长期存续。');
     if (number(disagreement) && disagreement > 0.5) warnings.push('DCF与相对估值分歧超过50%，合成中枢置信度降低；市场持续高倍数不是DCF终值的保证。');
@@ -347,7 +407,7 @@ export function buildValuationV2(rawData, context = {}, settingsInput = {}, opti
   return { version: VALUATION_V2_VERSION, asOf, settings, current, cases, fundamentals: f, reserveRatePath: path, relativeBasis, capitalBasis: { availableAt: capital.availableAt || null, verified: capitalSelection.verified, sourceUrls: capital.sourceUrls || [], versionCount: Array.isArray(context.capitalInputSnapshots) ? context.capitalInputSnapshots.length : capitalSelection.selected ? 1 : 0 },
     consensusBand: { low: normal.length ? Math.min(...normal) : null, mid: cases.base.price, high: normal.length ? Math.max(...normal) : null, policy: '正常研究情景区间，排除severeStress，非置信区间' },
     dataBlockers: [...legacy.dataBlockers || [], ...contextBlockers], confidence: { level: !number(cases.base.price) || legacy.dataBlockers?.length || contextBlockers.length ? 'insufficient' : relativeBasis.method !== 'historical_ttm' || cases.base.disagreement > 0.5 ? 'limited' : 'moderate', reasons: [...reasons, ...contextBlockers] },
-    warnings: [...balance.warnings, ...relativeBasis.warnings, '客户储备现金与USDC负债配套，不计公司净现金；公司自持USDC可用性80%为研究折扣。', 'DCF按年度FCFF代理分配到逐年权益后折现；D&A仅用于税盾，不在EBITDA现金流中重复加回。', '3/5年市场倍数退出仅用于比较隐含市场终值，不再次计入合成。'],
+    warnings: [...balance.warnings, ...relativeBasis.warnings, `客户储备现金与USDC负债配套，不计公司净现金；公司自持USDC可用性${Number((settings.corporateUSDCUsability * 100).toFixed(2))}%为研究折扣。`, 'DCF按年度FCFF代理分配到逐年权益后折现；D&A仅用于税盾，不在EBITDA现金流中重复加回。', '3/5年市场倍数退出仅用于比较隐含市场终值，不再次计入合成。'],
     legacyOneYearComparison: { price: legacy.scenarios?.base?.price ?? null, model: '已归档1.1一年利润×22倍旧框架', diagnosis: '旧Base额外-60bp及多假设同时偏保守；不代表中性五年DCF，也不回写历史' } };
 }
 

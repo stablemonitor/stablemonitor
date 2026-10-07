@@ -1,5 +1,6 @@
 // The homepage evaluates one latest snapshot using the research page's default
 // assumptions. It never replays history or restores private portfolio settings.
+import {inspectMarketSources} from './crcl-data-health.js?v=2.1.0';
 const $ = id => document.getElementById(id);
 const finite = n => typeof n === 'number' && Number.isFinite(n);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
@@ -95,6 +96,7 @@ function mergeFinancials(market, financial) {
 
 function renderSummary(snapshot, data, financialError, modelVersion, describe) {
   const l = snapshot;
+  const current=l.valuationV2?.current||{},health=inspectMarketSources(data,new Date().toISOString().slice(0,10));
   const f = l.fundamentals || {};
   const closeDate = finite(l.price) ? date(l.date) : '需补';
   const asOf = validDay(l.date) ? l.date : currentEasternDate();
@@ -116,6 +118,7 @@ function renderSummary(snapshot, data, financialError, modelVersion, describe) {
   const header = dataBlocked ? `CRCL 快照已读取，当前判断受数据限制 · 收盘 ${closeDate}` : `CRCL 同站快照 · 已完成收盘 ${closeDate}`;
   $('current-mini-status').textContent = header;
   $('home-current-status').textContent = `${header}；供给 ${chainDate}；SOFR ${rateDate}；缓存采集（北京时间）${date(data.metadata?.generatedAt)}。这些是有日期的快照，非盘中报价。`;
+  $('home-current-status').textContent+=' '+health.passed+'/'+health.total+'个市场来源日期与状态有效。';
   $('home-current-status').classList.toggle('warn', dataBlocked);
   $('home-current-metrics').innerHTML = [
     metric('CRCL 已完成收盘价', money(l.price), `交易日 ${closeDate} · Yahoo Finance 日线`),
@@ -124,8 +127,10 @@ function renderSummary(snapshot, data, financialError, modelVersion, describe) {
     metric('美元稳定币总量', amount(total), `观测 ${chainDate} · 仅美元锚定币 USD 市值`),
     metric('SOFR / 储备收益率代理', pct(sofr), `观测 ${rateDate} · 校准储备代理 ${pct(f.currentReserveYield)}`),
     metric('最新已公开财报', period, `期末 ${date(f.financialPeriodEnd || financial?.periodEnd)} · 披露 ${financialDate}`),
-    metric('Base 多期研究中枢', money(l.scenarios?.base?.price), `Bear ${money(l.scenarios?.bear?.price)} / Bull ${money(l.scenarios?.bull?.price)} · 默认假设`),
-    metric('小仓试探价格条件', money(l.positionBands?.buyBelow), `还需基本面质量、试仓企稳及风险条件通过，不叠加旧70分`)
+    metric(dataBlocked?'Base 缓存研究参考':'Base 多期研究中枢',money(l.scenarios?.base?.price),'Bear '+money(l.scenarios?.bear?.price)+' / Bull '+money(l.scenarios?.bull?.price)+' · 默认假设'),
+    metric(dataBlocked?'试探价 · 暂停行动':'小仓试探价格条件',money(l.positionBands?.buyBelow),dataBlocked?'截至 '+closeDate+'，完整异常见研究台数据核对':'还需基本面质量、行情确认及风险条件通过'),
+    metric('本次模型权益代理',finite(current.currentShares)?num(current.currentShares/1e6,3)+'M':'需补','含已公开融资；不等同精确fully diluted股数'),
+    metric('本次公司净现金',amount(current.corporateNetCash),'排除客户储备与ARC，公司自持USDC按可用性折扣纳入')
   ].join('');
   $('home-current-decision').textContent = financialError ? '等待有效数据' : conclusion.title;
   $('home-current-reason').textContent = financialError ? `${financialError}。已读取的行情可查看，财报恢复前暂停当前买卖判断。` : conclusion.reason;
@@ -149,7 +154,7 @@ async function start() {
   const results = await Promise.allSettled([
     fetchJSON('./data/market-data.json'),
     fetchJSON('./data/financials.json'),
-    Promise.all([import('./crcl-research-v2.js'), import('./crcl-usable.js')])
+    Promise.all([import('./crcl-research-v2.js?v=2.1.0'), import('./crcl-usable.js?v=2.1.0')])
   ]);
   const [marketResult, financialResult, moduleResult] = results;
   if (marketResult.status === 'rejected') throw marketResult.reason;

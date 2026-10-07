@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "preparedAt": "2026-10-02",
+  "preparedAt": "2026-10-08",
   "policy": "只在availableAt后下一交易日使用一级来源；预测路径及可用性比例是研究假设。",
   "fedSnapshots": [
     {
@@ -100,6 +100,15 @@
     "annualCashSoftwareCapex": 71600000,
     "annualCashPPECapex": 20800000
   },
+  "payrollTaxSnapshots": [
+    {"period":"2025Q3","amount":5015000,"availableAt":"2026-02-25","verified":true,"sourceUrl":"https://www.sec.gov/Archives/edgar/data/1876042/000187604226000032/final_circlereportsfourt.htm"},
+    {"period":"2025Q4","amount":8428000,"availableAt":"2026-02-25","verified":true,"sourceUrl":"https://www.sec.gov/Archives/edgar/data/1876042/000187604226000032/final_circlereportsfourt.htm"},
+    {"period":"2026Q1","amount":10588000,"availableAt":"2026-05-11","verified":true,"sourceUrl":"https://www.sec.gov/Archives/edgar/data/1876042/000187604226000148/final_05x11q1epr30.htm"},
+    {"period":"2026Q2","amount":7637000,"availableAt":"2026-08-05","verified":true,"sourceUrl":"https://s206.q4cdn.com/265218871/files/doc_news/2026/Aug/05/CIRCLE_Q2-2026.pdf"}
+  ],
+  "commercialTerms": [
+    {"id":"binance-wallet-incentives-20260917","availableAt":"2026-09-22","verified":true,"sourceUrl":"https://www.sec.gov/Archives/edgar/data/1876042/000187604226000276/crcl-20260917.htm","summary":"新协议替代旧协议，按Binance钱包USDC余额支付月度激励；费率未公开，不能从100M融资推断渠道留存改善。","rateDisclosed":false}
+  ],
   "financialRecasts": {
     "availableAt": "2026-05-11",
     "adjustedEBITDANewDefinition": {

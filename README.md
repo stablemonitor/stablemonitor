@@ -8,7 +8,7 @@
 
 `index.html` 优先展示同站当前CRCL摘要，即时稳定币榜单独立读取DefiLlama，失败时保留有日期的供给缓存；五月静态研究资料收起归档。`crcl.html` 展示完整研究台：持仓视角、四层实际价位、基本面质量与技术步速分离、五年现金流、互斥薪酬口径、同场景反算、预算及重建回放。
 
-当前模型V2，正常三情景与联合压力分开，五年DCF与自身历史TTM定价参照显式加权。旧V1方法和验收保存在assets/archive。版本差异明确展示；研究假设可在浏览器保存，账户为空不生成个人金额，演示账户明确标识。
+当前模型V2.1，正常三情景与联合压力分开，五年DCF与自身历史TTM定价参照显式加权。旧V1方法和验收保存在assets/archive。版本差异明确展示；研究假设可在浏览器保存，账户为空不生成个人金额，演示账户明确标识。
 
 ## 本地查看
 
@@ -28,8 +28,9 @@ npm run update-data
 ## 计算与展示
 
 - `assets/crcl-model.js`：原版数据校验与技术指标，旧V1参数独立冻结。
-- `assets/crcl-valuation-v2.js`：五年现金流、正常化终值、同口径TTM市场参照与多期侧诊断。
+- `assets/crcl-valuation-v2.js`：五年现金流、正常化终值、自身TTM市场参照及工资税口径桥与多期侧诊断。
 - `assets/crcl-decisions-v2.js`：试仓/core/trim/复核共享条件函数与真实美分价位。
+- `assets/crcl-data-health.js`：共享来源日期政策、实际输入时钟、RLDC/份额/现值勾稽与假设标识。
 - `assets/crcl-research-v2.js`：新估值/决策的组合、预算、研究重建与旧版存档。
 - `assets/crcl-dashboard.js`、`assets/crcl.css`：图表、情景控制、CSV导出、响应式界面。
 - `assets/crcl-usable.js`、`assets/crcl-usable.css`：持仓解释、逐项条件、反算、预算与公平回放界面。
@@ -38,3 +39,5 @@ npm run update-data
 - `tests/*.test.mjs`：经济单位、反算代回、缺失、时点、预算、SBC、基准资金及采集边界验证。
 
 情景与阈值未经样本外验证。历史没有入场时，现金组合的零回报不能证明策略有效。方法灵感来自[子琦的 CRCL 看板](https://crcl.seanzhao.ai/)，计算与界面独立实现。
+
+2026-10-08修订恢复了异常缓存后的自动刷新：健康测试改用独立有日期的真实固定样本，保留生产源失败及跨轮自愈回归。面板当前估值输入、四档图表短标记、完整V2 JSON导出与可选现金税路径均可核对；SBC税基敏感性默认0，不凭实际低税率或退款抬高默认估值。

@@ -1,8 +1,9 @@
-import * as Legacy from './crcl-model.js';
-import * as Valuation from './crcl-valuation-v2.js';
-import * as Decisions from './crcl-decisions-v2.js';
+import * as Legacy from './crcl-model.js?v=2.1.0';
+import * as Valuation from './crcl-valuation-v2.js?v=2.1.0';
+import * as Decisions from './crcl-decisions-v2.js?v=2.1.0';
+import {buildEconomicChecks} from './crcl-data-health.js?v=2.1.0';
 
-export const MODEL_VERSION='2.0.0-research';
+export const MODEL_VERSION='2.1.0-research';
 export const HISTORICAL_FORMULA_VERSION='2.0.0-reconstructed-2026-10-02';
 export const DEFAULT_SETTINGS=Object.freeze({
   ...Valuation.V2_DEFAULTS,...Decisions.DEFAULT_DECISION_SETTINGS,
@@ -38,9 +39,13 @@ function inputFor(data,date,options={}) {
 }
 function finalize(data,observed,settings,options={}) {
   const ctx=contextOf(data);
-  const valuation=Valuation.buildValuationV2(data,ctx,settings,{asOf:observed.date,fundamentals:observed.fundamentals});
+  const valuation=Valuation.buildValuationV2(data,ctx,settings,{asOf:observed.date,dataAsOf:options.asOf,fundamentals:observed.fundamentals});
   const snapshot={...observed,valuationV2:valuation,scenarios:valuation.cases || {},decisionSettings:settings,formulaVersion:MODEL_VERSION};
-  if(!finite(valuation.cases?.base?.price))snapshot.dataBlockers=[...snapshot.dataBlockers,'V2估值输入或正常基准情景不足，暂停当前行动判断'];
+  const base=valuation.cases?.base;
+  snapshot.knownOperatingLoss=Array.isArray(base?.years)&&base.years.length===5&&base.years.every(row=>finite(row.cashEBITDAProxy))&&finite(base.forwardCashEBITDAProxy)&&base.forwardCashEBITDAProxy<=0&&valuation.capitalBasis?.verified===true&&valuation.reserveRatePath?.valid===true&&!(valuation.dataBlockers||[]).length;
+  if(!finite(base?.price)&&!snapshot.knownOperatingLoss)snapshot.dataBlockers=[...snapshot.dataBlockers,'V2估值输入或正常基准情景不足，暂停当前行动判断'];
+  snapshot.economicChecks=buildEconomicChecks(snapshot,data);
+  snapshot.dataBlockers=[...snapshot.dataBlockers,...snapshot.economicChecks.filter(check=>check.status==='review'&&['rldc','share','pv'].includes(check.key)).map(check=>'经济输入核对未通过：'+check.label)];
   const decision=Decisions.evaluateDecisions(snapshot,settings);
   snapshot.decisionV2=decision;
   snapshot.buyScore=decision.quality?.score ?? null;
@@ -59,7 +64,8 @@ function finalize(data,observed,settings,options={}) {
   snapshot.positionBands={buyBelow:p.trial?.price,addBelow:p.core?.price,trimAbove:p.trim?.price,bearReview:p.extreme?.price,
     trial:p.trial?.price,core:p.core?.price,trim:p.trim?.price,extreme:p.extreme?.price};
   snapshot.blockers=[...snapshot.dataBlockers,...(settings.depeg?['人工脱锚风险已开启']:settings.eventRisk==='high'?['人工事件风险已开启']:[])];
-  snapshot.warnings=[...(observed.warnings || []).filter(x=>!x.includes('当前1.1公式')&&!x.includes('基础情景盈利或股权剩余')),...(valuation.warnings || []),...(decision.quality?.warnings || [])];
+  snapshot.warnings=[...(observed.warnings || []).filter(x=>!x.includes('当前1.1公式')&&!x.includes('基础情景盈利或股权剩余')).map(x=>x.startsWith('corporateNetCash 采用保守政策')?'财报/V1净现金代理采用普通现金减债务与ARC预售；V2当前净现金另外按所选可用性折扣计公司自持USDC及已公开融资，实际桥见数据核对。':x),...(valuation.warnings || []),...(decision.quality?.warnings || [])];
+  if(snapshot.knownOperatingLoss)snapshot.warnings.push('当前完整经营情景首年盈利非正，进入独立经营风险复核。'+(!finite(base?.price)?'正常研究中枢不适用，价线留空。':'可计算的远期价值不能取消首年经营风险。')+'这来自所选情景，不是来源缺数或已确认公司实亏。');
   snapshot.valuationContext=Legacy.valuationContext(observed,[],{});
   snapshot.modelComparison=valuation.cases?.base?.methods;
   if(options.latest && options.diagnostics!==false) {

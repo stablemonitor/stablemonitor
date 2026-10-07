@@ -6,8 +6,8 @@
   <meta name="description" content="CRCL 买卖纪律研究台：以分销后盈利、短端利率、USDC、稀释及情景估值解释买卖候选点位。">
   <title>CRCL 买卖纪律 · StableMonitor</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23182532'/%3E%3Cpath d='M7 23L13 15L18 19L26 8' stroke='%23c9a961' fill='none' stroke-width='3'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="assets/crcl.css">
-  <link rel="stylesheet" href="assets/crcl-usable.css">
+  <link rel="stylesheet" href="assets/crcl.css?v=2.1.0">
+  <link rel="stylesheet" href="assets/crcl-usable.css?v=2.1.0">
 </head>
 <body>
   <a class="skip-link" href="#main">跳至研究台</a>
@@ -27,10 +27,18 @@
         <div class="score-pair"><div><span>基本面质量</span><strong id="buy-score">—</strong><small>/ 100</small><div class="meter"><i id="buy-meter"></i></div></div><div><span>溢价压力</span><strong id="sell-score">—</strong><small>/ 100</small><div class="meter sell"><i id="sell-meter"></i></div></div></div>
       </section>
       <div id="risk-notice" class="risk-notice" role="status"></div>
+      <section id="data-health" class="card" aria-labelledby="data-health-title">
+        <div class="section-heading"><div><p class="eyebrow">先看数据，再看价格</p><h2 id="data-health-title">数据日期与估值输入核对</h2></div><a class="text-link" href="#sources-title">查看原始来源 ↗</a></div>
+        <p id="data-health-summary" class="health-summary" role="status"></p>
+        <div id="input-clock" class="health-grid"></div>
+        <details class="details"><summary>五个市场来源：观测日、成功采集与最近尝试</summary><div id="source-health-table" class="table-scroll"></div></details>
+        <details class="details"><summary>算术勾稽与经济假设：哪些已核对，哪些仍需判断</summary><div id="economic-checks" class="audit-grid"></div><div id="current-capital-bridge" class="model-note"></div><div id="commercial-terms-note" class="model-note"></div></details>
+      </section>
       <section id="trade-chart" class="card chart-card" aria-labelledby="chart-title">
         <div class="section-heading"><div><p class="eyebrow">价格 × 估值 × 触发时点</p><h2 id="chart-title">CRCL 买卖纪律图</h2></div><div class="range-control" role="group" aria-label="图表区间"><button data-range="90" aria-pressed="false">90 日</button><button data-range="180" aria-pressed="true" class="selected">180 日</button><button data-range="all" aria-pressed="false">全部</button></div></div>
         <div class="chart-legend"><span><i class="swatch price"></i>收盘价</span><span><i class="swatch base"></i>当时基准估值</span><span><i class="swatch band"></i>当时 Bear–Bull 区间</span><span><i class="swatch buy"></i>买入候选</span><span><i class="swatch sell"></i>减仓 / 退出复核</span></div>
         <div id="price-chart" class="chart-host" role="img" aria-label="CRCL 收盘价格、当时情景估值与候选买卖时点"></div>
+        <p id="chart-current-levels" class="footnote"></p>
         <div id="chart-readout" class="chart-readout" aria-live="polite">将鼠标移到曲线，或在手机上点选日期，查看当天依据。</div>
         <div class="chart-legend score-legend"><span><i class="swatch buy"></i>基本面质量</span><span><i class="swatch sell"></i>溢价压力</span><span class="muted">质量不含价格；溢价可独立减仓。两者不再叠加70/65门槛。</span></div>
         <div id="score-chart" class="chart-host score-host" role="img" aria-label="历史买入与减仓条件评分"></div>
@@ -63,7 +71,7 @@
       <section class="card" aria-labelledby="financial-driver-title"><div class="section-heading"><div><p class="eyebrow">利润改善的支持与反证一起看</p><h2 id="financial-driver-title">费用、渠道与股东成本</h2></div></div><div id="financial-driver-grid" class="financial-driver-grid"></div><p class="footnote">渠道付款与平台占比是披露观察，不会自动转化为护城河评分。平均与边际留存、季度实绩与年度代理分别列示。</p></section>
       <section id="methodology" class="card methodology" aria-labelledby="method-title"><div class="section-heading"><div><p class="eyebrow">方法、边界与证据</p><h2 id="method-title">从收入评分，进到股东价值</h2></div><a class="text-link" href="METHODOLOGY.md">下载完整方法说明 ↗</a></div>
         <div class="formula"><span>五年现金流</span><strong>留存储备收入 ＋ 平台贡献 − 现金费用及薪酬<br>− 现金税 − 现金再投 − 企业营运资金增量</strong></div>
-        <div class="formula equity"><span>每股研究中枢</span><strong>未来每股现金流与终值折现 ＋ 当日企业净现金<br>与同口径TTM历史倍数定价参照，明确加权比较</strong></div>
+        <div class="formula equity"><span>每股研究中枢</span><strong>未来每股现金流与终值折现 ＋ 当日企业净现金<br>与自身历史TTM倍数的市场参照，明确加权比较</strong></div>
         <div class="method-grid"><article><h3>买入条件</h3><p>小仓试探与核心分批目的分开，基本面质量不含股价。价格回报条件不再叠加旧70分；技术确认与预算控制步速。</p></article><article><h3>减仓与退出</h3><p>估值过高可以独立触发减仓，不必等基本面先坏。经营保护、极端溢价和资料失效分别复核，摘要分数不二次阻断。</p></article><article><h3>时间与数据</h3><p>未结束的美股日线不进入信号；财报按公布后下一交易日生效。链上与利率数据滞后使用，缺失不补成零，过期快照暂停行动提示。</p></article><article><h3>尚未解决的变量</h3><p>渠道合同变化、真实完全稀释股本、并购整合、监管和支付业务变现仍需人工核验。ARC Token 预售及客户储备现金不可当作经常性利润或企业现金。</p></article></div>
         <div class="table-scroll"><table class="comparison-table"><thead><tr><th>参考站思路</th><th>本研究台的补充</th></tr></thead><tbody><tr><td>P/S、RSI、USDC 三层买入评分</td><td>多期现金流与市场参照；质量、步速、四档价位和预算分开</td></tr><tr><td>USDC × 10Y 利率的收入代理</td><td>实际储备收益率与短端利率变化，分别测算留存和费用</td></tr><tr><td>当前股数近似历史市值</td><td>按披露时点选取股本；稀释代理及历史不足明确列示</td></tr><tr><td>符合分数日的定投均价</td><td>下一交易日执行、现金与仓位约束、成本和最大回撤</td></tr></tbody></table></div>
         <p class="footnote">方法灵感来自 <a href="https://crcl.seanzhao.ai/" target="_blank" rel="noopener noreferrer">子琦的 CRCL 数据看板</a>。此处独立实现计算与界面；评分权重、压力差和倍数是可调整的研究规则，未经过独立样本验证。</p>
@@ -72,6 +80,6 @@
     </div>
     <footer><span>STABLEMONITOR · CRCL RESEARCH</span><p>候选买卖点用于研究与交易纪律。图表不预测底部或顶部；实际成交价、资金约束和持仓风险需另行判断。<a href="VALIDATION.md">本版验收记录 ↗</a></p><small id="model-version"></small></footer>
   </main>
-  <script type="module" src="assets/crcl-dashboard.js"></script>
+  <script type="module" src="assets/crcl-dashboard.js?v=2.1.0"></script>
 </body>
 </html>
