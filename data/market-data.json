@@ -25434,6 +25434,12 @@
       "usdc": 72631520743,
       "usdcUSD": 72619763165,
       "totalStablecoins": 304652950740
+    },
+    {
+      "date": "2026-10-19",
+      "usdc": 72595668187,
+      "usdcUSD": 72589005385,
+      "totalStablecoins": 304621765407
     }
   ],
   "rates": [
@@ -28118,12 +28124,18 @@
       "sofr": 0.0388,
       "source": "NYFed",
       "publicationPolicy": "next_business_morning; model uses no rate dated current valuation day"
+    },
+    {
+      "date": "2026-10-19",
+      "sofr": 0.0387,
+      "source": "NYFed",
+      "publicationPolicy": "next_business_morning; model uses no rate dated current valuation day"
     }
   ],
   "metadata": {
-    "generatedAt": "2026-10-20T01:16:02.401Z",
-    "currentEasternDate": "2026-10-19",
-    "currentEasternTimeMinutes": 1276,
+    "generatedAt": "2026-10-21T00:56:17.750Z",
+    "currentEasternDate": "2026-10-20",
+    "currentEasternTimeMinutes": 1256,
     "closingPolicy": "America/New_York timezone including DST; current-day bars excluded until 16:15 ET. Chain supply and SOFR are lagged by at least one calendar day.",
     "pricesPolicy": "Complete raw daily OHLC and volume; adjustedClose retained for audit. Scoring uses raw tradable prices without dividend reinvestment.",
     "stablecoinPolicy": "USDC reserve anchor usdc is nominal totalCirculating.peggedUSD. Market-share numerator usdcUSD and denominator totalStablecoins both use totalCirculatingUSD.peggedUSD for the USD-pegged universe; other currency pegs are excluded. Source history may be revised.",
@@ -28146,9 +28158,9 @@
     "sources": {
       "CRCL": {
         "status": "cached",
-        "fetchedAt": "2026-10-20T01:16:02.401Z",
+        "fetchedAt": "2026-10-21T00:56:17.750Z",
         "asOf": "2026-10-12",
-        "error": "CRCL 2026-10-19 close: missing or non-numeric value",
+        "error": "CRCL 2026-10-20 close: missing or non-numeric value",
         "url": "https://query2.finance.yahoo.com/v8/finance/chart/CRCL?range=2y&interval=1d",
         "authority": "third_party_market_data",
         "cacheFetchedAt": "2026-10-13T03:10:56.943Z",
@@ -28157,9 +28169,9 @@
       },
       "SPY": {
         "status": "cached",
-        "fetchedAt": "2026-10-20T01:16:02.401Z",
+        "fetchedAt": "2026-10-21T00:56:17.750Z",
         "asOf": "2026-10-15",
-        "error": "SPY 2026-10-19 close: missing or non-numeric value",
+        "error": "SPY 2026-10-20 close: missing or non-numeric value",
         "url": "https://query2.finance.yahoo.com/v8/finance/chart/SPY?range=2y&interval=1d",
         "authority": "third_party_market_data",
         "cacheFetchedAt": "2026-10-16T00:45:02.166Z",
@@ -28168,14 +28180,14 @@
       },
       "usdc": {
         "status": "fresh",
-        "fetchedAt": "2026-10-20T01:16:02.401Z",
-        "asOf": "2026-10-18",
+        "fetchedAt": "2026-10-21T00:56:17.750Z",
+        "asOf": "2026-10-19",
         "error": null,
         "url": "https://stablecoins.llama.fi/stablecoincharts/all?stablecoin=2",
         "authority": "third_party_onchain_aggregation",
-        "cacheFetchedAt": "2026-10-20T01:16:02.401Z",
-        "lastSuccessfulFetchedAt": "2026-10-20T01:16:02.401Z",
-        "observations": 2960,
+        "cacheFetchedAt": "2026-10-21T00:56:17.750Z",
+        "lastSuccessfulFetchedAt": "2026-10-21T00:56:17.750Z",
+        "observations": 2961,
         "inputField": "totalCirculating.peggedUSD",
         "valueBasis": "nominal_USDC_units",
         "cachedLegacyValueBasis": false,
@@ -28184,14 +28196,14 @@
       },
       "totalStablecoins": {
         "status": "fresh",
-        "fetchedAt": "2026-10-20T01:16:02.401Z",
-        "asOf": "2026-10-18",
+        "fetchedAt": "2026-10-21T00:56:17.750Z",
+        "asOf": "2026-10-19",
         "error": null,
         "url": "https://stablecoins.llama.fi/stablecoincharts/all",
         "authority": "third_party_onchain_aggregation",
-        "cacheFetchedAt": "2026-10-20T01:16:02.401Z",
-        "lastSuccessfulFetchedAt": "2026-10-20T01:16:02.401Z",
-        "observations": 3246,
+        "cacheFetchedAt": "2026-10-21T00:56:17.750Z",
+        "lastSuccessfulFetchedAt": "2026-10-21T00:56:17.750Z",
+        "observations": 3247,
         "inputField": "totalCirculatingUSD.peggedUSD",
         "universe": "USD_pegged_stablecoins_only",
         "valueBasis": "USD_market_value_USD_pegs_only",
@@ -28203,26 +28215,26 @@
       },
       "rates": {
         "status": "fresh",
-        "fetchedAt": "2026-10-20T01:16:02.401Z",
-        "asOf": "2026-10-16",
+        "fetchedAt": "2026-10-21T00:56:17.750Z",
+        "asOf": "2026-10-19",
         "error": null,
-        "url": "https://markets.newyorkfed.org/api/rates/secured/sofr/search.json?startDate=2025-01-01&endDate=2026-10-19",
+        "url": "https://markets.newyorkfed.org/api/rates/secured/sofr/search.json?startDate=2025-01-01&endDate=2026-10-20",
         "authority": "official_primary_NYFed",
-        "cacheFetchedAt": "2026-10-20T01:16:02.401Z",
-        "lastSuccessfulFetchedAt": "2026-10-20T01:16:02.401Z",
-        "observations": 447
+        "cacheFetchedAt": "2026-10-21T00:56:17.750Z",
+        "lastSuccessfulFetchedAt": "2026-10-21T00:56:17.750Z",
+        "observations": 448
       }
     },
     "failures": 2,
     "degraded": true,
     "status": "degraded",
     "headSummary": {
-      "date": "2026-10-18",
-      "asOf": "2026-10-18",
-      "totalUSDC": 72631520743,
-      "totalUSDCUSD": 72619763165,
-      "totalStable": 304652950740,
-      "marketShare": 0.23836881602035062,
+      "date": "2026-10-19",
+      "asOf": "2026-10-19",
+      "totalUSDC": 72595668187,
+      "totalUSDCUSD": 72589005385,
+      "totalStable": 304621765407,
+      "marketShare": 0.23829224838223578,
       "numeratorSource": "usdc",
       "denominatorSource": "totalStablecoins",
       "reserveValueBasis": "nominal_USDC_units",
